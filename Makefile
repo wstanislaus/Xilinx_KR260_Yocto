@@ -13,9 +13,35 @@ SSTATE_DIR ?= $(CURDIR)/sstate-cache
 TMPDIR ?= $(BUILD_DIR)/tmp
 DTS_FILE ?= $(CURDIR)/qspi_image/kr260.dts
 
-
 # Network boot configuration
-NFS_ROOT ?= /nfsroot
+# These must be defined in build/conf/local.conf
+# Validate that all required network boot variables are defined in build/conf/local.conf
+ifneq ($(wildcard $(BUILD_DIR)/conf/local.conf),)
+    BOARD_IP := $(shell grep -E '^BOARD_IP\s*[?:]?=' $(BUILD_DIR)/conf/local.conf | head -1 | sed 's/.*= *"\(.*\)".*/\1/')
+    BOARD_GATEWAY := $(shell grep -E '^BOARD_GATEWAY\s*[?:]?=' $(BUILD_DIR)/conf/local.conf | head -1 | sed 's/.*= *"\(.*\)".*/\1/')
+    BOARD_NETMASK := $(shell grep -E '^BOARD_NETMASK\s*[?:]?=' $(BUILD_DIR)/conf/local.conf | head -1 | sed 's/.*= *"\(.*\)".*/\1/')
+    NFS_SERVER := $(shell grep -E '^NFS_SERVER\s*[?:]?=' $(BUILD_DIR)/conf/local.conf | head -1 | sed 's/.*= *"\(.*\)".*/\1/')
+    NFS_ROOT := $(shell grep -E '^NFS_ROOT\s*[?:]?=' $(BUILD_DIR)/conf/local.conf | head -1 | sed 's/.*= *"\(.*\)".*/\1/')
+    
+    # Validate all variables are defined
+    ifeq ($(BOARD_IP),)
+        $(error BOARD_IP is not defined in $(BUILD_DIR)/conf/local.conf. Please define it in conf/local.conf.template or build/conf/local.conf)
+    endif
+    ifeq ($(BOARD_GATEWAY),)
+        $(error BOARD_GATEWAY is not defined in $(BUILD_DIR)/conf/local.conf. Please define it in conf/local.conf.template or build/conf/local.conf)
+    endif
+    ifeq ($(BOARD_NETMASK),)
+        $(error BOARD_NETMASK is not defined in $(BUILD_DIR)/conf/local.conf. Please define it in conf/local.conf.template or build/conf/local.conf)
+    endif
+    ifeq ($(NFS_SERVER),)
+        $(error NFS_SERVER is not defined in $(BUILD_DIR)/conf/local.conf. Please define it in conf/local.conf.template or build/conf/local.conf)
+    endif
+    ifeq ($(NFS_ROOT),)
+        $(error NFS_ROOT is not defined in $(BUILD_DIR)/conf/local.conf. Please define it in conf/local.conf.template or build/conf/local.conf)
+    endif
+else
+    $(error $(BUILD_DIR)/conf/local.conf does not exist. Please run 'make setup-env' first to create it from conf/local.conf.template)
+endif
 
 # BitBake parallelism configuration
 # Use 80% of available CPU cores for optimal parallelism
@@ -245,7 +271,7 @@ create-image-ub:
 	cp "$$KERNEL_IMAGE" "$$TMP_DIR/Image.bin" && \
 	gzip "$$TMP_DIR/Image.bin" && \
 	echo "Generating system.dtb from dts/Makefile..." && \
-	$(MAKE) -C dts system.dtb && \
+	$(MAKE) -C dts system.dtb BOARD_IP=$(BOARD_IP) BOARD_GATEWAY=$(BOARD_GATEWAY) BOARD_NETMASK=$(BOARD_NETMASK) NFS_SERVER=$(NFS_SERVER) NFS_ROOT=$(NFS_ROOT) && \
 	cp dts/system.dtb "$$TMP_DIR/system.dtb" && \
 	echo "DTB file generated successfully!" && \
 	cp "$(CURDIR)/tools/image.its" "$$TMP_DIR/image.its" && \
