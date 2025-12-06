@@ -197,5 +197,3 @@ MACHINE=k26-smk-kr-sdt bitbake kria-image-kr260 -c populate_sdk
 3. **TFTP/NFS failures** – Validate services on the server IP (configured via `NFS_SERVER`, default `172.20.1.1`), firewall settings, and export permissions.
 4. **Kernel FIT creation errors** – Confirm `tools/image.its` is copied by the Makefile and that DTB/overlay files exist in `build/tmp-glibc/deploy/images/...`.
 5. **Login problems** – Default user/password is `xilinx/xilinx`. Root account is locked intentionally.
-
-For additional background and workflow details, see `QUICKSTART.md`.
