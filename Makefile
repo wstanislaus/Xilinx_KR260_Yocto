@@ -69,8 +69,8 @@ YOCTO_MANIFEST_FILE ?= default-edf.xml
 CONFIG_DIR = $(CURDIR)/meta-kr260/configs
 KERNEL_CONFIG = $(CONFIG_DIR)/kernel.config
 
-.PHONY: help setup-sources setup-env build-kernel compile-kernel create-image-ub build-rootfs build-sdk clean-all clean-build clean-sstate
-.PHONY: configure-kernel configure-rootfs save-config save-config-kernel restore-configs bitbake-shell
+.PHONY: help setup-sources setup-env build-kernel compile-kernel create-image-ub build-rootfs build-sdk build-all clean-all clean-build clean-sstate
+.PHONY: configure-kernel configure-rootfs save-config save-config-kernel restore-configs bitbake-shell install-kernel install-rootfs
 
 help:
 	@echo "Xilinx Kria KR260 Development Kit Yocto Build System"
@@ -92,6 +92,7 @@ help:
 	@echo "  build-kernel    - Build kernel and create image.ub (compile-kernel + create-image-ub)"
 	@echo "  build-rootfs    - Build rootfs tar.gz"
 	@echo "  build-sdk       - Build SDK toolchain"
+	@echo "  build-all       - Build kernel, rootfs, and SDK"
 	@echo "  bitbake-shell   - Open interactive bitbake shell"
 	@echo ""
 	@echo "Clean targets:"
@@ -100,6 +101,8 @@ help:
 	@echo "  clean-all           - Clean build, downloads, and sstate"
 	@echo ""
 	@echo "Install targets:"
+	@echo "  install-kernel  - Install image.ub to TFTP server"
+	@echo "  install-rootfs  - Install rootfs to NFS server"
 	@echo ""
 	@echo "Configuration:"
 	@echo "  MACHINE=$(MACHINE)"
