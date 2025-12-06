@@ -1,0 +1,30 @@
+# POKY_BBLAYERS_CONF_VERSION is increased each time build/conf/bblayers.conf
+# changes incompatibly
+POKY_BBLAYERS_CONF_VERSION = "2"
+
+BBPATH = "${TOPDIR}"
+BBFILES ?= ""
+
+BBLAYERS ?= " \
+  @SOURCES_DIR@/sources/poky/meta \
+  @SOURCES_DIR@/sources/poky/meta-poky \
+  @SOURCES_DIR@/sources/meta-openembedded/meta-oe \
+  @SOURCES_DIR@/sources/meta-openembedded/meta-python \
+  @SOURCES_DIR@/sources/meta-openembedded/meta-filesystems \
+  @SOURCES_DIR@/sources/meta-openembedded/meta-networking \
+  @SOURCES_DIR@/sources/meta-virtualization \
+  @SOURCES_DIR@/sources/meta-arm/meta-arm \
+  @SOURCES_DIR@/sources/meta-arm/meta-arm-toolchain \
+  @SOURCES_DIR@/sources/meta-xilinx/meta-xilinx-demos \
+  @SOURCES_DIR@/sources/meta-xilinx/meta-xilinx-core \
+  @SOURCES_DIR@/sources/meta-xilinx/meta-xilinx-standalone \
+  @SOURCES_DIR@/sources/meta-xilinx/meta-xilinx-standalone-sdt \
+  @SOURCES_DIR@/sources/meta-xilinx/meta-xilinx-bsp \
+  @SOURCES_DIR@/sources/meta-xilinx/meta-xilinx-imgrcvry \
+  @SOURCES_DIR@/sources/meta-xilinx/meta-xilinx-multimedia \
+  @SOURCES_DIR@/sources/meta-xilinx/meta-microblaze \
+  @SOURCES_DIR@/sources/meta-openamp \
+  @SOURCES_DIR@/sources/meta-kria \
+  @SOURCES_DIR@/sources/meta-jupyter \
+  @CURDIR@/meta-kr260 \
+  "

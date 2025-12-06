@@ -1,0 +1,13 @@
+# Ignore Yocto build artifacts
+build/
+tmp/
+sstate-cache/
+downloads/
+sources/build
+# Ignore git, docs, and binary outputs
+.git/
+*.o
+*.elf
+*.bin
+*.bit
+*.dtb

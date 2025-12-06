@@ -1,0 +1,206 @@
+#
+# This file is your local configuration file and all settings put into this file
+# will take precedence over default and machine-specific settings.
+#
+# The commented-out lines below are common configuration options which you may
+# wish to enable. The Yocto Project documentation has more information about
+# these and other configuration options.
+#
+
+MACHINE ??= "@MACHINE@"
+DISTRO ?= ""
+LICENSE_FLAGS_ACCEPTED += "xilinx"
+
+# Enable virtualization if using meta-virtualization layer
+DISTRO_FEATURES:append = " virtualization"
+
+# Enable systemd and usrmerge (required for systemd and dfx-mgr)
+DISTRO_FEATURES:append = " usrmerge systemd"
+DISTRO_FEATURES:remove = "sysvinit"
+
+# Set init manager to systemd
+VIRTUAL-RUNTIME_init_manager = "systemd"
+
+# Prefer Jupyter Notebook over JupyterLab for start-jupyter runtime
+PREFERRED_RPROVIDER_start-jupyter = "start-jupyternb"
+
+#
+# Where to place source-code fetched by the build system
+#
+DL_DIR ?= "@DL_DIR@"
+
+#
+# Where to place shared-state files
+#
+SSTATE_DIR ?= "@SSTATE_DIR@"
+
+#
+# Where to place the build output
+#
+TMPDIR = "@TMPDIR@"
+
+#
+# Package Management configuration
+#
+# This variable lists which packaging formats to build. The first format listed
+# will be used for the rootfs image.
+#
+PACKAGE_CLASSES ?= "package_deb"
+
+#
+# SDK target architecture
+#
+SDKMACHINE ?= "x86_64"
+
+#
+# Extra image features
+#
+# The following is a list of additional classes to use when building images which
+# enable extra features. Some available options which can be included in this variable
+# are:
+#   - 'buildstats' collect build statistics
+#   - 'image-mklibs' to reduce shared library files size for an image
+#   - 'image-prelink' in order to prelink the filesystem image
+#   - 'image-swab' to perform host system intrusion detection
+#   - 'populate_sdk' for an SDK
+#   - 'rootfs-postcommands' to add post install scripts
+#   - 'tools-debug' for debugging
+#   - 'tools-sdk' for an SDK
+#   - 'tools-testapps' for testing
+#
+EXTRA_IMAGE_FEATURES ?= "debug-tweaks tools-sdk dev-pkgs package-management"
+
+#
+# Additional image features
+#
+# To generate images that can be written to an SD card using the 'dd' utility,
+# uncomment the following lines:
+#   IMAGE_FSTYPES += "wic"
+#   IMAGE_FSTYPES += "wic.bmap"
+#
+# To add support for network boot (TFTP/NFS), the following is already configured
+# in the machine configuration.
+
+#
+# Network boot configuration
+#
+# These variables are used to configure network boot parameters
+# They will be passed to the kernel bootargs via device tree
+BOARD_IP ?= "172.20.1.2"
+BOARD_GATEWAY ?= "172.20.1.1"
+BOARD_NETMASK ?= "255.255.255.0"
+NFS_SERVER ?= "172.20.1.1"
+NFS_ROOT ?= "/nfsroot"
+
+#
+# Parallelism Options
+#
+# These two options control how much parallelism BitBake should use. The first
+# option determines how many tasks BitBake should run in parallel. The second
+# option controls how many processes make should run in parallel when compiling.
+#
+# Use 80% of available CPU cores for optimal parallelism
+# This will be overridden by the Makefile if BB_NUMBER_THREADS is set as an environment variable
+BB_NUMBER_THREADS ?= "${@max(1, int(multiprocessing.cpu_count() * 0.8))}"
+PARALLEL_MAKE ?= "-j ${BB_NUMBER_THREADS}"
+
+#
+# Terminal configuration for menuconfig
+#
+# This setting allows the build system to select a suitable terminal for
+# menuconfig interfaces, preventing hangs after exiting configuration menus.
+OE_TERMINAL = "auto"
+
+# Avoid MC native deadlock warnings
+# Force multiconfig setscene enforcement to prevent deadlocks
+BB_SETSCENE_ENFORCE_MULTICONFIG = "1"
+# Increase retry count for deferred tasks to handle race conditions
+BB_DEFERRED_TASKS_RETRY = "10"
+# Configure separate sstate directories per multiconfig to prevent deadlocks
+# This ensures each multiconfig has its own sstate cache, avoiding conflicts
+SSTATE_DIR:mc:k26-sm-sdt-cortexa53-fsbl = "${SSTATE_DIR}-cortexa53-fsbl"
+SSTATE_DIR:mc:k26-sm-sdt-microblaze-pmu = "${SSTATE_DIR}-microblaze-pmu"
+
+#
+# Disk Space Monitoring during the build
+#
+# Monitor the disk space and inodes during the build. If the free space or inodes
+# in the build directory goes below the threshold, the build will stop and warn the user.
+# Format: ACTION,DIRECTORY,MIN_SPACE_FREE,MIN_INODE_FREE
+# Reduced inode thresholds to avoid false positives (inodes are checked in KB units)
+BB_DISKMON_DIRS ??= "\
+    STOPTASKS,${TMPDIR},1G,1M \
+    STOPTASKS,${DL_DIR},1G,1M \
+    STOPTASKS,${SSTATE_DIR},1G,1M \
+    STOPTASKS,/tmp,100M,100K \
+    HALT,${TMPDIR},100M,100K \
+    HALT,${DL_DIR},100M,100K \
+    HALT,${SSTATE_DIR},100M,100K \
+    HALT,/tmp,10M,10K \
+    "
+
+#
+# Shared-state files from other locations
+#
+# As mentioned above, shared state files are prebuilt cache data objects
+# which can be used to accelerate build time. This variable can be used to
+# configure the system to search other mirror locations for these objects.
+#
+# This can be a faster source than the upstream sstate sources if you are
+# on a fast network connection.
+#
+# SSTATE_MIRRORS ?= "\
+# file://.* http://someserver.tld/share/sstate/PATH;downloadfilename=PATH \n \
+# file://.* file:///some/local/dir/sstate/PATH"
+
+#
+# Yocto Project SState Mirror
+#
+# The Yocto Project has prebuilt artifacts available for its releases, you can
+# enable use of these by uncommenting the following line:
+#
+# SSTATE_MIRRORS ?= "file://.* https://sstate.yoctoproject.org/all/PATH;downloadfilename=PATH"
+
+#
+# Qemu configuration
+#
+# By default, qemu-native will build with a builtin VNC server where graphical output can be
+# seen. The line below enables the SDL backend too.
+#
+# PACKAGECONFIG:append:pn-qemu-native = " sdl"
+
+#
+# Package feed configuration
+#
+# Package management is enabled via EXTRA_IMAGE_FEATURES above.
+# With PACKAGE_CLASSES = "package_deb", this enables apt/dpkg package management
+# on the target system, allowing you to install packages at runtime using apt.
+
+#
+# User management
+#
+# Add a root password by setting this variable. The password will be hashed
+# using the passwd-crypt command.
+#
+# INIT_MANAGER = "systemd"
+
+#
+# Time zone
+#
+# Set the time zone for the target system. The default is UTC.
+#
+# TIMEZONE = "America/Los_Angeles"
+
+#
+# Hostname
+#
+# Set the hostname for the target system. The default is the machine name.
+#
+HOSTNAME = "Xilinx-KR260"
+
+#
+# Additional kernel command line arguments
+#
+# These will be appended to the kernel command line in the device tree
+# For network boot, these are already configured in the device tree
+#

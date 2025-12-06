@@ -1,0 +1,43 @@
+/dts-v1/;
+
+/ {
+    description = "Custom Linux image.ub";
+    #address-cells = <2>;
+
+    images {
+        kernel {
+            description = "Linux kernel";
+            data = /incbin/("Image.bin.gz");
+            type = "kernel";
+            arch = "arm64";
+            os = "linux";
+            compression = "gzip";
+            load = <0x00000000 0x00200000>;
+            entry = <0x00000000 0x00200000>;
+            hash {
+                algo = "sha256";
+            };
+        };
+
+        fdt {
+            description = "Flattened Device Tree";
+            data = /incbin/("system.dtb");
+            type = "flat_dt";
+            arch = "arm64";
+            compression = "none";
+            hash {
+                algo = "sha256";
+            };
+        };
+    };
+
+    configurations {
+        default = "conf";
+
+        conf {
+            description = "Boot Linux kernel with FDT blob";
+            kernel = "kernel";
+            fdt = "fdt";
+        };
+    };
+};

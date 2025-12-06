@@ -1,0 +1,28 @@
+From 0c454f6ff7ad0ce1f68e20f1a1a616f6fb9c3c6a Mon Sep 17 00:00:00 2001
+From: William Stanislaus <wstanislaus@gmail.com>
+Date: Thu, 1 Jan 1970 00:00:00 +0000
+Subject: [PATCH] xhdmi: include libxlnk_cma headers
+
+The HDMI helper sources in `_xhdmi` pull in `libxlnk_cma.h`, which lives
+under the repository `sdbuild` tree. Provide the appropriate include path
+so that the module builds successfully inside Yocto.
+
+Signed-off-by: William Stanislaus <wstanislaus@gmail.com>
+---
+ pynq/lib/_pynq/_xhdmi/Makefile | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/pynq/lib/_pynq/_xhdmi/Makefile b/pynq/lib/_pynq/_xhdmi/Makefile
+index ae202749..52d887c0 100644
+--- a/pynq/lib/_pynq/_xhdmi/Makefile
++++ b/pynq/lib/_pynq/_xhdmi/Makefile
+@@ -2,6 +2,7 @@ export ESW_LIBS := v_hdmi_common v_hdmirxss v_hdmirx v_hdmitxss v_hdmitx video_c
+ export LIB_NAME := _xhdmi/libxhdmi.so
+
+ export SRC := $(patsubst %, _xhdmi/%, $(wildcard *.c))
++export INC += -I../../../sdbuild/packages/libsds/libcma
+
+ all:
+ 	make -C .. -f embeddedsw_lib.mk
+--
+2.34.1

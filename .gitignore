@@ -1,0 +1,31 @@
+# Build directories
+build/
+sources/
+downloads/
+sstate-cache/
+
+# DTS build artifacts
+*.dtb
+*.dts.tmp
+*.dtbo
+
+# Temporary files
+*.tmp
+*.log
+*.pyc
+__pycache__/
+
+# Yocto build artifacts
+*.wic
+*.wic.bmap
+*.tar.gz
+*.rpm
+*.deb
+*.ipk
+
+# Editor files
+*~
+*.swp
+*.swo
+.vscode/
+.idea/

@@ -1,0 +1,44 @@
+From d8edb9b59a3db9ec35e37dde078ad0501ce37bcc Mon Sep 17 00:00:00 2001
+From: William Stanislaus <wstanislaus@gmail.com>
+Date: Wed, 3 Dec 2025 17:19:42 -0800
+Subject: [PATCH] upstream patch to fix the pyxrt build
+
+Signed-off-by: William Stanislaus <wstanislaus@gmail.com>
+---
+ CMake/embedded_system.cmake    | 5 +++++
+ python/pybind11/CMakeLists.txt | 4 ++--
+ 2 files changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/CMake/embedded_system.cmake b/CMake/embedded_system.cmake
+index a2389bfef0..6b6a239784 100644
+--- a/CMake/embedded_system.cmake
++++ b/CMake/embedded_system.cmake
+@@ -68,6 +68,11 @@ include (CMake/lint.cmake)
+
+ add_subdirectory(runtime_src)
+
++# Build the pybind11 module so edge rootfs images ship pyxrt.
++if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/python")
++  add_subdirectory(python)
++endif()
++
+ message("-- XRT version: ${XRT_VERSION_STRING}")
+
+ configure_file (
+diff --git a/python/pybind11/CMakeLists.txt b/python/pybind11/CMakeLists.txt
+index d474d09af1..c03e119c05 100644
+--- a/python/pybind11/CMakeLists.txt
++++ b/python/pybind11/CMakeLists.txt
+@@ -39,8 +39,8 @@ endif(CMAKE_VERSION VERSION_LESS "3.12")
+
+ if (HAS_PYTHON)
+   if (${LINUX_FLAVOR} MATCHES "^(ubuntu|debian)")
+-    SET(PKGDIR "dist-packages")
+-  elseif (${LINUX_FLAVOR} MATCHES "^(rhel|centos|amzn|fedora|sles|almalinux|rocky)")
++    SET(PKGDIR "site-packages")
++  else ()
+     SET(PKGDIR "site-packages")
+   endif(${LINUX_FLAVOR} MATCHES "^(ubuntu|debian)")
+   find_package(pybind11 2.6.0 REQUIRED PATHS "$ENV{VIRTUAL_ENV}/lib/python${PYTHONLIBS_VERSION_MAJOR}.${PYTHONLIBS_VERSION_MINOR}/${PKGDIR}/pybind11" "/usr/local/lib/python${PYTHONLIBS_VERSION_MAJOR}.${PYTHONLIBS_VERSION_MINOR}/${PKGDIR}/pybind11" "/usr/lib/python${PYTHONLIBS_VERSION_MAJOR}.${PYTHONLIBS_VERSION_MINOR}/${PKGDIR}/pybind11")
+--
+2.43.0

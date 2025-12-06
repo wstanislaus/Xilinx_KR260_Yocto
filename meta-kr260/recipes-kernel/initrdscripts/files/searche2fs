@@ -1,0 +1,336 @@
+#!/bin/sh
+
+export PATH=/sbin:/usr/sbin:/bin:/usr/bin
+
+
+BOOTARG_IP=""
+BOOTARG_SERVER=""
+BOOTARG_GW=""
+BOOTARG_NETMASK=""
+BOOTARG_IFACE=""
+BOOTARG_AUTOCONF=""
+STATIC_IP_CONFIGURED=0
+
+parse_bootargs_ip() {
+	local cmdline arg ip_param oldifs
+	cmdline=$(cat /proc/cmdline 2>/dev/null)
+	for arg in $cmdline; do
+		case "$arg" in
+			ip=*)
+				ip_param=${arg#ip=}
+				break
+				;;
+		esac
+	done
+	[ -z "$ip_param" ] && return
+	oldifs=$IFS
+	IFS=':'
+	set -- $ip_param
+	IFS=$oldifs
+	BOOTARG_IP=$1
+	BOOTARG_SERVER=$2
+	BOOTARG_GW=$3
+	BOOTARG_NETMASK=$4
+	BOOTARG_HOSTNAME=$5
+	BOOTARG_IFACE=$6
+	BOOTARG_AUTOCONF=$7
+	[ -z "$BOOTARG_IFACE" ] && BOOTARG_IFACE="eth0"
+}
+
+configure_static_ip_from_bootargs() {
+	local dev mask
+	[ -n "$BOOTARG_IP" ] || return
+	[ $STATIC_IP_CONFIGURED -eq 1 ] && return
+	dev=${BOOTARG_IFACE:-eth0}
+	[ -d "/sys/class/net/$dev" ] || return
+	mask=${BOOTARG_NETMASK:-255.255.255.0}
+	if ! ifconfig $dev 2>/dev/null | grep -q "inet "; then
+		msg "Configuring $dev with static IP $BOOTARG_IP/$mask from bootargs"
+		if ! ifconfig $dev $BOOTARG_IP netmask $mask up 2>/dev/null; then
+			msg "Warning: Failed to configure static IP on $dev via ifconfig"
+			return
+		fi
+	fi
+	if [ -n "$BOOTARG_GW" ]; then
+		if ! route -n 2>/dev/null | grep -q "^0.0.0.0\|^default"; then
+			msg "Adding default route via $BOOTARG_GW (from bootargs)"
+			route add default gw $BOOTARG_GW dev $dev 2>/dev/null || \
+				ip route add default via $BOOTARG_GW dev $dev 2>/dev/null || \
+				msg "Warning: Failed to add default route via $BOOTARG_GW"
+		fi
+	fi
+	STATIC_IP_CONFIGURED=1
+}
+
+parse_bootargs_ip
+
+searche2fs_run() {
+
+	# Check boottype parameter (can be from bootparam_boottype or parsed from bootargs)
+	boottype="${bootparam_boottype}"
+	if [ -z "$boottype" ]; then
+		# Try to parse from /proc/cmdline
+		boottype=$(cat /proc/cmdline 2>/dev/null | grep -o 'boottype=[^ ]*' | cut -d= -f2 || echo "")
+	fi
+
+	echo "=== searche2fs: boottype='$boottype' ===" > /dev/kmsg 2>&1 || echo "=== boottype='$boottype' ==="
+
+	if [ "$boottype" = "nfs" ]; then
+
+		# boottype=nfs nfsserver=172.20.1.1 nfspath=/nfsroot
+		# ip=172.20.1.2::172.20.1.1:255.255.255.0:Xilinx-KR260:eth0:bootp
+
+		mount_folder=/rootfs
+		mount_attempts=5
+		mount_cnt=1
+		mount_success=0
+
+		# Get NFS server and path from boot parameters
+		nfsserver="${bootparam_nfsserver}"
+		nfspath="${bootparam_nfspath}"
+
+		if [ -z "$nfsserver" ]; then
+			nfsserver=$(cat /proc/cmdline 2>/dev/null | grep -o 'nfsserver=[^ ]*' | cut -d= -f2 || echo "")
+		fi
+		if [ -z "$nfsserver" ] && [ -n "$BOOTARG_SERVER" ]; then
+			nfsserver=$BOOTARG_SERVER
+		fi
+		if [ -z "$nfspath" ]; then
+			nfspath=$(cat /proc/cmdline 2>/dev/null | grep -o 'nfspath=[^ ]*' | cut -d= -f2 || echo "")
+		fi
+
+		if [ -z "$nfsserver" ] || [ -z "$nfspath" ]; then
+			msg "ERROR: NFS server or path not specified in boot parameters"
+			msg "  nfsserver: $nfsserver"
+			msg "  nfspath: $nfspath"
+			return 1
+		fi
+
+		msg "NFS boot detected:"
+		msg "  Server: $nfsserver"
+		msg "  Path: $nfspath"
+		echo "=== searche2fs: NFS boot detected, server=$nfsserver, path=$nfspath ===" > /dev/kmsg 2>&1 || true
+
+		# Wait for network interface to be ready
+		# The ethernet driver may be deferred waiting for clock controller
+		msg "Waiting for network interface to be ready..."
+
+		# Wait for eth0 to appear in /sys/class/net (more reliable than ifconfig)
+		interface_ready=0
+		wait_count=0
+		max_wait=45  # Wait up to 45 seconds (increased from 30)
+
+		while [ $wait_count -lt $max_wait ]; do
+			# Check if eth0 exists in /sys/class/net
+			if [ -d /sys/class/net/eth0 ]; then
+				msg "eth0 interface found in /sys/class/net"
+				# Check if it's up
+				if [ -f /sys/class/net/eth0/operstate ]; then
+					operstate=$(cat /sys/class/net/eth0/operstate 2>/dev/null || echo "down")
+					msg "eth0 operstate: $operstate"
+					if [ "$operstate" = "up" ] || [ "$operstate" = "unknown" ]; then
+						interface_ready=1
+						break
+					fi
+				fi
+				# Try to bring it up if it exists but is down
+				ifconfig eth0 up 2>/dev/null || ip link set eth0 up 2>/dev/null || true
+				sleep 1
+			fi
+
+			# Also check ifconfig as fallback
+			if ifconfig eth0 >/dev/null 2>&1; then
+				msg "eth0 found via ifconfig"
+				interface_ready=1
+				break
+			fi
+
+			# Check dmesg for ethernet-related messages
+			if [ $((wait_count % 10)) -eq 0 ] && [ $wait_count -gt 0 ]; then
+				msg "Checking kernel messages for ethernet..."
+				dmesg | tail -20 | grep -i "eth\|gem\|ethernet\|ff0e" || true
+			fi
+
+			wait_count=$((wait_count + 1))
+			if [ $((wait_count % 5)) -eq 0 ]; then
+				msg "Still waiting for eth0... ($wait_count/$max_wait seconds)"
+				# List available interfaces for debugging
+				msg "Available interfaces: $(ls /sys/class/net/ 2>/dev/null | tr '\n' ' ' || echo 'none')"
+				# Check if ethernet device exists in /sys/bus/platform/devices
+				if [ -d /sys/bus/platform/devices ]; then
+					eth_devices=$(ls /sys/bus/platform/devices/ 2>/dev/null | grep -i "ff0e\|ethernet\|gem" || echo "none")
+					if [ "$eth_devices" != "none" ]; then
+						msg "Ethernet platform devices found: $eth_devices"
+						# Check driver status
+						for dev in $eth_devices; do
+							if [ -e /sys/bus/platform/devices/$dev/driver ]; then
+								driver_name=$(readlink /sys/bus/platform/devices/$dev/driver 2>/dev/null | xargs basename || echo "unknown")
+								msg "  $dev driver: $driver_name"
+							else
+								msg "  $dev: no driver bound"
+							fi
+						done
+					fi
+				fi
+			fi
+			sleep 1
+		done
+
+		if [ $interface_ready -eq 0 ]; then
+			msg "Warning: eth0 not ready after $max_wait seconds, continuing anyway..."
+			msg "Available network interfaces: $(ls /sys/class/net/ 2>/dev/null | tr '\n' ' ' || echo 'none')"
+			# Show detailed debugging info
+			msg "Platform devices: $(ls /sys/bus/platform/devices/ 2>/dev/null | grep -i gem || echo 'none')"
+			msg "Recent kernel messages about ethernet:"
+			dmesg | tail -30 | grep -i "eth\|gem\|ethernet\|ff0e\|deferred" || msg "  (no relevant messages)"
+		else
+			msg "Network interface eth0 is ready"
+			configure_static_ip_from_bootargs
+			# Show interface status
+			ifconfig eth0 2>/dev/null | head -3 || ip addr show eth0 2>/dev/null | head -5 || true
+		fi
+
+		while [ $mount_cnt -le $mount_attempts ]
+		do
+			msg "Attempt to mount NFS ($mount_cnt/$mount_attempts): "
+			msg "  Server: $nfsserver"
+			msg "  Path: $nfspath"
+
+			# Show network status
+			ifconfig eth0 2>/dev/null | head -2 || msg "  Warning: Cannot get eth0 status"
+
+			# Add default route if needed
+			if ! route | grep -q default; then
+				msg "  Adding default route via $nfsserver"
+				route add default gw $nfsserver 2>/dev/null || true
+			fi
+
+			# Ping server to check connectivity
+			msg "  Checking connectivity to $nfsserver..."
+			if ping -c 1 -W 3 $nfsserver >/dev/null 2>&1; then
+				msg "  Server is reachable"
+			else
+				msg "  Warning: Cannot ping server, trying mount anyway"
+			fi
+
+			# Create mount point
+			mkdir -p $mount_folder
+
+			# Mount attempt (set server ip and shared folder)
+			msg "  Attempting NFS mount..."
+			echo "=== searche2fs: Mount attempt $mount_cnt: mount -t nfs $nfsserver:$nfspath $mount_folder ===" > /dev/kmsg 2>&1 || true
+			# Capture mount error output for debugging
+			mount_output=$(mount -t nfs -o nolock,vers=3,timeo=10 $nfsserver:$nfspath $mount_folder 2>&1)
+			mount_exit=$?
+			if [ $mount_exit -eq 0 ]; then
+				msg "NFS rootfs successfully mounted at $mount_folder"
+				echo "=== searche2fs: NFS mount SUCCESS ===" > /dev/kmsg 2>&1 || true
+				mount_success=1
+				break
+			else
+				msg "Mount attempt $mount_cnt failed, retrying in 2 seconds..."
+				msg "Mount error: $mount_output"
+				echo "=== searche2fs: Mount attempt $mount_cnt FAILED: $mount_output ===" > /dev/kmsg 2>&1 || true
+			fi
+			true $((mount_cnt=mount_cnt+1))
+			sleep 2
+		done
+
+		if [ $mount_success -eq 1 ]; then
+			# Verify the mount is actually accessible
+			if [ ! -d "$mount_folder" ]; then
+				msg "ERROR: Mount point $mount_folder does not exist"
+				return 1
+			fi
+
+			# Set and export ROOTFS_DIR so the initramfs framework knows where the root is mounted
+			export ROOTFS_DIR=${mount_folder}
+			msg "ROOTFS_DIR exported as: $ROOTFS_DIR"
+
+			# Verify mounted filesystem has essential directories
+			if [ ! -d $ROOTFS_DIR/dev ]; then
+				msg "Warning: There's no '/dev' on NFS mount"
+			fi
+
+			# Check for init binary (required for switch_root)
+			if [ ! -f $ROOTFS_DIR/sbin/init ] && [ ! -f $ROOTFS_DIR/init ] && [ ! -f $ROOTFS_DIR/bin/init ]; then
+				msg "ERROR: No init binary found in mounted rootfs"
+				msg "  Checked: $ROOTFS_DIR/sbin/init, $ROOTFS_DIR/init, $ROOTFS_DIR/bin/init"
+				msg "  Listing $ROOTFS_DIR:"
+				ls -la $ROOTFS_DIR/ | head -10
+				return 1
+			fi
+
+			# Use check_init function from initramfs framework
+			if check_init $ROOTFS_DIR; then
+				msg "Root filesystem verified successfully"
+			else
+				msg "Warning: check_init reported issues, but continuing..."
+			fi
+
+			msg "NFS rootfs ready for switch_root"
+			echo "=== searche2fs: NFS mount successful, ROOTFS_DIR=$ROOTFS_DIR ===" > /dev/kmsg 2>&1 || true
+			return 0
+		else
+			msg "ERROR: Failed to mount NFS rootfs after $mount_attempts attempts"
+			msg "  Check network connectivity and NFS server configuration"
+			echo "=== searche2fs: NFS mount FAILED ===" > /dev/kmsg 2>&1 || true
+			return 1
+		fi
+
+	else
+
+		if [ -n "$bootparam_launch_ramdisk_init" ]; then
+			msg "launch_ramdisk_init is set, Launching ramdisk init"
+			# Stay in initramfs, don't set ROOTFS_DIR
+			return 0
+		fi
+
+		# Try to mount local storage as root
+		if [ -z "$ROOTFS_DIR" ]; then
+			ROOTFS_DIR=/rootfs
+		fi
+		export ROOTFS_DIR
+
+		if [ -z "${bootparam_ext2}" ] && [ -z "${bootparam_ext3}" ] && [ -z "${bootparam_ext4}" ]; then
+			boot_devices=""
+			block_devices=""
+			sleep 2
+			block_devices=$(ls /sys/block/ | grep -e "sd[a-z]\{1,\}$" -e "mmcblk[0-9]\{1,\}$")
+			for block_device in $block_devices; do
+				boot_devices=$(blkid /dev/${block_device}* | grep "TYPE=\"ext" | cut -d: -f 1)
+				for boot_device in $boot_devices; do
+					if [ -e ${boot_device} ]; then
+						boot_device_type="$(blkid ${boot_device} | grep -o 'TYPE=.*' | cut -d\" -f 2)"
+						mkdir -p "$ROOTFS_DIR"
+						check_fsck "$boot_device" "$boot_device_type"
+						if mount -t $boot_device_type $boot_device $ROOTFS_DIR 2>&1; then
+							if [ ! -d $ROOTFS_DIR/dev ]; then
+								umount $ROOTFS_DIR
+								msg "There's no '/dev' on $boot_device_type(${boot_device}) partition."
+							else
+								if ! check_init $ROOTFS_DIR; then
+									msg "Warning: check_init failed for $ROOTFS_DIR"
+									# Don't unmount, let finish script handle it
+								fi
+								msg "Local rootfs mounted at $ROOTFS_DIR"
+								return 0
+							fi
+						else
+							msg "Failed to mount selected root filesystem ($boot_device)"
+						fi
+					fi
+				done
+			done
+			msg "No suitable root filesystem found on local storage"
+		fi
+	fi
+
+	# If we get here and ROOTFS_DIR is not set, something went wrong
+	if [ -z "$ROOTFS_DIR" ]; then
+		msg "ERROR: ROOTFS_DIR is not set and no root filesystem was mounted"
+		return 1
+	fi
+
+	return 0
+}

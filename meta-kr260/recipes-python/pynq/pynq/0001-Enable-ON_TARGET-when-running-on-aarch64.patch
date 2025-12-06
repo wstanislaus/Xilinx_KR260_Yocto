@@ -1,0 +1,35 @@
+From 7bc833df3f3a80a4fb40eb6a8b9c8194e2834c49 Mon Sep 17 00:00:00 2001
+From: William Stanislaus <wstanislaus@gmail.com>
+Date: Wed, 12 Mar 2025 21:06:00 +0000
+Subject: [PATCH] Enable ON_TARGET when running on aarch64
+
+Some custom Zynq UltraScale+ platforms do not populate the
+/proc/device-tree/chosen/pynq_board property that upstream PYNQ
+uses to detect whether it is executing on target. This causes
+ON_TARGET to remain False which means pyxrt is never imported and
+hardware initialisation fails at runtime.
+
+Treat any execution on an aarch64 CPU as "on target" so the XRT
+python bindings are available even without the device-tree hook.
+
+Signed-off-by: William Stanislaus <wstanislaus@gmail.com>
+---
+ pynq/ps.py | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/pynq/ps.py b/pynq/ps.py
+index f92728b9..c2dcf70d 100755
+--- a/pynq/ps.py
++++ b/pynq/ps.py
+@@ -11,7 +11,8 @@ ZU_ARCH = "aarch64"
+ CPU_ARCH = platform.machine()
+ CPU_ARCH_IS_SUPPORTED = CPU_ARCH in [ZYNQ_ARCH, ZU_ARCH]
+ CPU_ARCH_IS_x86 = CPU_ARCH in ['x86_64', 'AMD64']
+-ON_TARGET = os.path.isfile('/proc/device-tree/chosen/pynq_board')
++# Some custom boards don't set chosen/pynq_board; fall back to CPU type.
++ON_TARGET = os.path.isfile('/proc/device-tree/chosen/pynq_board') or CPU_ARCH == ZU_ARCH
+
+ DEFAULT_PL_CLK_MHZ = 100.0
+
+--
+2.43.0
