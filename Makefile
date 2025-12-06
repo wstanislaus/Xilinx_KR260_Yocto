@@ -15,32 +15,38 @@ DTS_FILE ?= $(CURDIR)/qspi_image/kr260.dts
 
 # Network boot configuration
 # These must be defined in build/conf/local.conf
-# Validate that all required network boot variables are defined in build/conf/local.conf
-ifneq ($(wildcard $(BUILD_DIR)/conf/local.conf),)
-    BOARD_IP := $(shell grep -E '^BOARD_IP\s*[?:]?=' $(BUILD_DIR)/conf/local.conf | head -1 | sed 's/.*= *"\(.*\)".*/\1/')
-    BOARD_GATEWAY := $(shell grep -E '^BOARD_GATEWAY\s*[?:]?=' $(BUILD_DIR)/conf/local.conf | head -1 | sed 's/.*= *"\(.*\)".*/\1/')
-    BOARD_NETMASK := $(shell grep -E '^BOARD_NETMASK\s*[?:]?=' $(BUILD_DIR)/conf/local.conf | head -1 | sed 's/.*= *"\(.*\)".*/\1/')
-    NFS_SERVER := $(shell grep -E '^NFS_SERVER\s*[?:]?=' $(BUILD_DIR)/conf/local.conf | head -1 | sed 's/.*= *"\(.*\)".*/\1/')
-    NFS_ROOT := $(shell grep -E '^NFS_ROOT\s*[?:]?=' $(BUILD_DIR)/conf/local.conf | head -1 | sed 's/.*= *"\(.*\)".*/\1/')
-    
-    # Validate all variables are defined
-    ifeq ($(BOARD_IP),)
-        $(error BOARD_IP is not defined in $(BUILD_DIR)/conf/local.conf. Please define it in conf/local.conf.template or build/conf/local.conf)
+# Skip validation for setup targets that create the config file
+CURRENT_TARGET := $(firstword $(MAKECMDGOALS))
+SKIP_IP_VALIDATION := $(filter setup-env setup-sources help,$(CURRENT_TARGET))
+
+# Only validate and load IP variables if not running setup targets
+ifeq ($(SKIP_IP_VALIDATION),)
+    ifneq ($(wildcard $(BUILD_DIR)/conf/local.conf),)
+        BOARD_IP := $(shell grep -E '^BOARD_IP\s*[?:]?=' $(BUILD_DIR)/conf/local.conf | head -1 | sed 's/.*= *"\(.*\)".*/\1/')
+        BOARD_GATEWAY := $(shell grep -E '^BOARD_GATEWAY\s*[?:]?=' $(BUILD_DIR)/conf/local.conf | head -1 | sed 's/.*= *"\(.*\)".*/\1/')
+        BOARD_NETMASK := $(shell grep -E '^BOARD_NETMASK\s*[?:]?=' $(BUILD_DIR)/conf/local.conf | head -1 | sed 's/.*= *"\(.*\)".*/\1/')
+        NFS_SERVER := $(shell grep -E '^NFS_SERVER\s*[?:]?=' $(BUILD_DIR)/conf/local.conf | head -1 | sed 's/.*= *"\(.*\)".*/\1/')
+        NFS_ROOT := $(shell grep -E '^NFS_ROOT\s*[?:]?=' $(BUILD_DIR)/conf/local.conf | head -1 | sed 's/.*= *"\(.*\)".*/\1/')
+        
+        # Validate all variables are defined (only if file exists and we're not in setup)
+        ifeq ($(BOARD_IP),)
+            $(error BOARD_IP is not defined in $(BUILD_DIR)/conf/local.conf. Please define it in conf/local.conf.template or build/conf/local.conf)
+        endif
+        ifeq ($(BOARD_GATEWAY),)
+            $(error BOARD_GATEWAY is not defined in $(BUILD_DIR)/conf/local.conf. Please define it in conf/local.conf.template or build/conf/local.conf)
+        endif
+        ifeq ($(BOARD_NETMASK),)
+            $(error BOARD_NETMASK is not defined in $(BUILD_DIR)/conf/local.conf. Please define it in conf/local.conf.template or build/conf/local.conf)
+        endif
+        ifeq ($(NFS_SERVER),)
+            $(error NFS_SERVER is not defined in $(BUILD_DIR)/conf/local.conf. Please define it in conf/local.conf.template or build/conf/local.conf)
+        endif
+        ifeq ($(NFS_ROOT),)
+            $(error NFS_ROOT is not defined in $(BUILD_DIR)/conf/local.conf. Please define it in conf/local.conf.template or build/conf/local.conf)
+        endif
+    else
+        $(error $(BUILD_DIR)/conf/local.conf does not exist. Please run 'make setup-env' first to create it from conf/local.conf.template)
     endif
-    ifeq ($(BOARD_GATEWAY),)
-        $(error BOARD_GATEWAY is not defined in $(BUILD_DIR)/conf/local.conf. Please define it in conf/local.conf.template or build/conf/local.conf)
-    endif
-    ifeq ($(BOARD_NETMASK),)
-        $(error BOARD_NETMASK is not defined in $(BUILD_DIR)/conf/local.conf. Please define it in conf/local.conf.template or build/conf/local.conf)
-    endif
-    ifeq ($(NFS_SERVER),)
-        $(error NFS_SERVER is not defined in $(BUILD_DIR)/conf/local.conf. Please define it in conf/local.conf.template or build/conf/local.conf)
-    endif
-    ifeq ($(NFS_ROOT),)
-        $(error NFS_ROOT is not defined in $(BUILD_DIR)/conf/local.conf. Please define it in conf/local.conf.template or build/conf/local.conf)
-    endif
-else
-    $(error $(BUILD_DIR)/conf/local.conf does not exist. Please run 'make setup-env' first to create it from conf/local.conf.template)
 endif
 
 # BitBake parallelism configuration
