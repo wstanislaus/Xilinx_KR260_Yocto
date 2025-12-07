@@ -27,6 +27,9 @@ IMAGE_INSTALL = " \
     util-linux-umount \
     e2fsprogs-e2fsck \
     e2fsprogs-mke2fs \
+    e2fsprogs-resize2fs \
+    parted \
+    resize-part \
     nfs-utils-client \
     iputils-ping \
     netbase \

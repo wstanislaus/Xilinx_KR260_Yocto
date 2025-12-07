@@ -316,8 +316,24 @@ disable_root_login() {
     fi
 }
 
+# Copy image.ub kernel FIT image to /boot directory in rootfs
+install_kernel_image() {
+    # Create /boot directory
+    install -d ${IMAGE_ROOTFS}/boot
+    
+    # Check if image.ub exists in deploy directory
+    if [ -f ${DEPLOY_DIR_IMAGE}/image.ub ]; then
+        bbnote "Copying image.ub to /boot in rootfs"
+        cp ${DEPLOY_DIR_IMAGE}/image.ub ${IMAGE_ROOTFS}/boot/image.ub
+        chmod 644 ${IMAGE_ROOTFS}/boot/image.ub
+    else
+        bbwarn "image.ub not found in ${DEPLOY_DIR_IMAGE}, skipping copy to /boot"
+        bbwarn "Build kernel first with 'make build-kernel' or 'bitbake virtual/kernel'"
+    fi
+}
+
 # Run post-processing hooks
-ROOTFS_POSTPROCESS_COMMAND += "set_hostname; enable_zocl_module; create_xilinx_user; create_notebook_directory; remove_sysv_init_scripts; setup_global_env; rename_ethernet_interface; setup_jupyter_service; disable_root_login; "
+ROOTFS_POSTPROCESS_COMMAND += "set_hostname; enable_zocl_module; create_xilinx_user; create_notebook_directory; remove_sysv_init_scripts; setup_global_env; rename_ethernet_interface; setup_jupyter_service; disable_root_login; install_kernel_image; "
 
 # Increase image size to accommodate PYNQ runtime, XRT, and additional packages
 IMAGE_ROOTFS_SIZE ?= "1048576"

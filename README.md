@@ -171,6 +171,104 @@ The prebuilt U-Boot image does not have TFTP boot configured by default. To enab
 
 3. The configuration is now saved and will be used for subsequent boots.
 
+## Booting from eMMC
+
+Once kernel and rootfs tuning is complete, you can burn a WIC image to eMMC for standalone booting without network dependencies.
+
+### Prerequisites
+
+1. **Update Kernel Bootarg**: Uncomment the line with `root=/dev/mmcblk0p2` and comment the other line with `root=/dev/nfs`  in `dts/kr260_overlay.dtso`:
+   ```bash
+   /* bootargs = "earlycon console=ttyPS1,115200 clk_ignore_unused root=/dev/nfs rw nfsroot=" XSTRINGIFY(NFS_SERVER) ":" XSTRINGIFY(NFS_ROOT) ",tcp,vers=3,timeo=14 xilinx_tsn_ep.st_pcp=4 cma=900M ip=" XSTRINGIFY(BOARD_IP) "::" XSTRINGIFY(BOARD_GATEWAY) ":" XSTRINGIFY(BOARD_NETMASK) ":Xilinx-KR260:eth0:off uio_pdrv_genirq.of_id=generic-uio"; */
+   bootargs = "earlycon console=ttyPS1,115200 clk_ignore_unused root=/dev/mmcblk0p2 rw rootwait xilinx_tsn_ep.st_pcp=4 cma=900M uio_pdrv_genirq.of_id=generic-uio";
+    
+   ```
+
+2. **Build the WIC image**: After enabling WIC support, rebuild the rootfs:
+   ```bash
+   make build-rootfs
+   ```
+   The WIC image will be generated at:
+   `build/tmp-glibc/deploy/images/k26-smk-kr-sdt/kria-image-kr260-k26-smk-kr-sdt.wic`
+
+### Burning WIC Image to eMMC
+
+**Step 1: Boot using network**
+
+Boot the KR260 board using network boot (TFTP/NFS) as described in the previous sections.
+
+**Step 2: Transfer the WIC image to the board**
+
+Copy the WIC image to the board. You can use SCP, NFS, or any other method:
+```bash
+# From your build host
+scp build/tmp-glibc/deploy/images/k26-smk-kr-sdt/kria-image-kr260-k26-smk-kr-sdt.wic xilinx@172.20.1.2:/home/xilinx/
+```
+
+**Step 3: Identify the eMMC device**
+
+On the board, check the block devices:
+```bash
+xilinx@Xilinx-KR260:~$ lsblk
+
+NAME         MAJ:MIN RM  SIZE RO TYPE MOUNTPOINTS
+sda            8:0    1    0B  0 disk
+mmcblk0      179:0    0 14.8G  0 disk
+|-mmcblk0p1  179:1    0  512M  0 part /run/media/boot-mmcblk0p1
+`-mmcblk0p2  179:2    0  2.3G  0 part /run/media/root-mmcblk0p2
+mmcblk0boot0 179:8    0 31.5M  1 disk
+mmcblk0boot1 179:16   0 31.5M  1 disk
+```
+
+In this example, the eMMC device is `/dev/mmcblk0`.
+
+**Step 4: Unmount any mounted partitions**
+
+If the eMMC partitions are automatically mounted, unmount them:
+```bash
+umount /run/media/boot-mmcblk0p1 /run/media/root-mmcblk0p2
+```
+
+**Step 5: Burn the WIC image**
+
+**⚠️ WARNING: This will erase all data on the eMMC device. Double-check the device path before proceeding.**
+
+```bash
+sudo dd if=/path/to/kria-image-kr260-k26-smk-kr-sdt.wic of=/dev/mmcblk0 bs=4M status=progress
+```
+
+Replace `/path/to/` with the actual path to your WIC image file. The `status=progress` option shows the write progress.
+
+**Step 6: Configure U-Boot for eMMC boot**
+
+After burning completes, reboot the board and break into the U-Boot prompt (press any key during boot countdown):
+
+1. **Set the eMMC boot command**:
+   ```bash
+   setenv bootcmd_emmc "mmc dev 0; fatload mmc 0:1 0x10000000 image.ub; bootm 0x10000000"
+   ```
+
+2. **Update bootcmd to use eMMC boot**:
+   ```bash
+   setenv bootcmd "run bootcmd_emmc"
+   ```
+
+3. **Save the environment**:
+   ```bash
+   saveenv
+   ```
+
+4. **Reboot**:
+   ```bash
+   reset
+   ```
+
+The board should now boot from eMMC. The initramfs will automatically resize the root partition to use the full eMMC capacity (from 2.3G to ~14.8G) on the first boot.
+
+**Note**: The WIC image includes:
+- Partition 1 (FAT32): Contains `image.ub` kernel FIT image in `/boot`
+- Partition 2 (ext4): Root filesystem that will be automatically expanded to maximum size on first boot
+
 ## Manual bitbake Usage
 
 ```bash
