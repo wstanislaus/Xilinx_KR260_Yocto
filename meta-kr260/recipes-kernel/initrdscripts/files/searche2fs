@@ -2,6 +2,14 @@
 
 export PATH=/sbin:/usr/sbin:/bin:/usr/bin
 
+# Message logging function - logs to kernel log and console
+msg() {
+    local message="$*"
+    # Log to kernel message buffer (visible in dmesg)
+    echo "searche2fs: $message" > /dev/kmsg 2>&1 || true
+    # Also print to console
+    echo "$message" > /dev/console 2>&1 || true
+}
 
 BOOTARG_IP=""
 BOOTARG_SERVER=""
@@ -314,6 +322,145 @@ searche2fs_run() {
 									# Don't unmount, let finish script handle it
 								fi
 								msg "Local rootfs mounted at $ROOTFS_DIR"
+								echo "=== searche2fs: Local rootfs mounted at $ROOTFS_DIR from $boot_device ===" > /dev/kmsg 2>&1 || true
+								
+								# Automatically resize root partition to maximum size for eMMC/SD card
+								# Check if this is an eMMC or SD card device (not NFS)
+								if echo "$boot_device" | grep -qE "(mmcblk|sd[a-z])"; then
+									msg "Detected local storage device ($boot_device), attempting to resize root partition to maximum size..."
+									echo "=== searche2fs: Detected local storage ($boot_device), starting resize ===" > /dev/kmsg 2>&1 || true
+									if command -v resize-part >/dev/null 2>&1 && command -v parted >/dev/null 2>&1 && command -v resize2fs >/dev/null 2>&1; then
+										# Extract device and partition number for manual resize if needed
+										if echo "$boot_device" | grep -qE "/dev/mmcblk[0-9]+p[0-9]+"; then
+											# Format: /dev/mmcblk0p2 -> /dev/mmcblk0 and 2
+											ROOT_DEV=$(echo "$boot_device" | sed -E 's/p[0-9]+$//')
+											PART_NUM=$(echo "$boot_device" | sed -E 's/.*p([0-9]+)$/\1/')
+										elif echo "$boot_device" | grep -qE "/dev/sd[a-z][0-9]+"; then
+											# Format: /dev/sda2 -> /dev/sda and 2
+											ROOT_DEV=$(echo "$boot_device" | sed -E 's/[0-9]+$//')
+											PART_NUM=$(echo "$boot_device" | sed -E 's/.*([0-9]+)$/\1/')
+										else
+											msg "Warning: Unable to parse device name: $boot_device"
+											ROOT_DEV=""
+											PART_NUM=""
+										fi
+										
+										msg "Device: $ROOT_DEV, Partition: $PART_NUM"
+										echo "=== searche2fs: Resize - Device=$ROOT_DEV, Partition=$PART_NUM ===" > /dev/kmsg 2>&1 || true
+										
+										# Validate we have valid device and partition number
+										if [ -z "$ROOT_DEV" ] || [ -z "$PART_NUM" ]; then
+											msg "Error: Could not extract device or partition number from $boot_device"
+											echo "=== searche2fs: ERROR - Could not parse device/partition from $boot_device ===" > /dev/kmsg 2>&1 || true
+											msg "Trying fallback method with resize-part script..."
+											# Fallback to resize-part script
+											if resize-part "$boot_device" 2>&1; then
+												msg "Fallback resize-part succeeded"
+											else
+												msg "Warning: Fallback resize-part also failed"
+											fi
+											# Try to remount and continue
+											if mount -t $boot_device_type $boot_device $ROOTFS_DIR 2>&1; then
+												msg "Rootfs remounted after fallback resize attempt"
+											fi
+											return 0
+										fi
+										
+										# Verify device exists
+										if [ ! -b "$ROOT_DEV" ]; then
+											msg "Error: Device $ROOT_DEV does not exist"
+											return 0
+										fi
+										
+										# Get initial partition size for verification
+										INITIAL_SIZE=$(parted -s "$ROOT_DEV" unit B print 2>/dev/null | grep "^[[:space:]]*$PART_NUM" | awk '{print $4}' | sed 's/B$//' 2>/dev/null || echo "")
+										if [ -n "$INITIAL_SIZE" ]; then
+											msg "Initial partition size: $INITIAL_SIZE bytes"
+											echo "=== searche2fs: Initial partition size: $INITIAL_SIZE bytes ===" > /dev/kmsg 2>&1 || true
+										fi
+										
+										# Unmount temporarily to safely resize partition table
+										msg "Unmounting rootfs temporarily to resize partition..."
+										echo "=== searche2fs: Unmounting $ROOTFS_DIR for resize ===" > /dev/kmsg 2>&1 || true
+										if ! umount "$ROOTFS_DIR" 2>&1; then
+											msg "Warning: Failed to unmount for resize, trying to resize anyway..."
+										fi
+										
+										# Wait a moment for unmount to complete
+										sleep 1
+										
+										# Resize partition table first using parted directly
+										if [ -n "$ROOT_DEV" ] && [ -n "$PART_NUM" ]; then
+											msg "Resizing partition table: parted $ROOT_DEV resizepart $PART_NUM 100%"
+											echo "=== searche2fs: Executing: parted -s $ROOT_DEV resizepart $PART_NUM 100% ===" > /dev/kmsg 2>&1 || true
+											RESIZE_OUTPUT=$(parted -s "$ROOT_DEV" resizepart "$PART_NUM" 100% 2>&1)
+											RESIZE_EXIT=$?
+											echo "=== searche2fs: parted exit code: $RESIZE_EXIT ===" > /dev/kmsg 2>&1 || true
+											if [ $RESIZE_EXIT -eq 0 ]; then
+												msg "Partition table resized successfully"
+												echo "=== searche2fs: Partition table resize SUCCESS ===" > /dev/kmsg 2>&1 || true
+												# Verify the resize
+												FINAL_SIZE=$(parted -s "$ROOT_DEV" unit B print 2>/dev/null | grep "^[[:space:]]*$PART_NUM" | awk '{print $4}' | sed 's/B$//' 2>/dev/null || echo "")
+												if [ -n "$FINAL_SIZE" ] && [ -n "$INITIAL_SIZE" ]; then
+													msg "Final partition size: $FINAL_SIZE bytes"
+													echo "=== searche2fs: Final partition size: $FINAL_SIZE bytes ===" > /dev/kmsg 2>&1 || true
+													if [ "$FINAL_SIZE" != "$INITIAL_SIZE" ]; then
+														msg "Partition size changed from $INITIAL_SIZE to $FINAL_SIZE bytes"
+														echo "=== searche2fs: Partition expanded from $INITIAL_SIZE to $FINAL_SIZE bytes ===" > /dev/kmsg 2>&1 || true
+													else
+														msg "Warning: Partition size did not change"
+														echo "=== searche2fs: WARNING - Partition size unchanged ===" > /dev/kmsg 2>&1 || true
+													fi
+												fi
+											else
+												msg "Warning: Failed to resize partition table (exit code: $RESIZE_EXIT)"
+												msg "Parted output: $RESIZE_OUTPUT"
+												echo "=== searche2fs: ERROR - Partition resize FAILED (exit $RESIZE_EXIT): $RESIZE_OUTPUT ===" > /dev/kmsg 2>&1 || true
+											fi
+										fi
+										
+										# Trigger kernel to re-read partition table
+										msg "Triggering kernel to re-read partition table..."
+										if [ -f /sys/block/${ROOT_DEV##/dev/}/force_rescan ]; then
+											echo 1 > /sys/block/${ROOT_DEV##/dev/}/force_rescan 2>/dev/null || true
+										fi
+										# Try partprobe if available, otherwise skip (kernel should auto-detect)
+										if command -v partprobe >/dev/null 2>&1; then
+											partprobe "$ROOT_DEV" 2>/dev/null || true
+										fi
+										sleep 1
+										
+										# Resize filesystem using resize2fs
+										msg "Resizing filesystem: resize2fs $boot_device"
+										echo "=== searche2fs: Executing: resize2fs $boot_device ===" > /dev/kmsg 2>&1 || true
+										RESIZE2FS_OUTPUT=$(resize2fs "$boot_device" 2>&1)
+										RESIZE2FS_EXIT=$?
+										echo "=== searche2fs: resize2fs exit code: $RESIZE2FS_EXIT ===" > /dev/kmsg 2>&1 || true
+										if [ $RESIZE2FS_EXIT -eq 0 ]; then
+											msg "Filesystem resized successfully"
+											echo "=== searche2fs: Filesystem resize SUCCESS ===" > /dev/kmsg 2>&1 || true
+										else
+											msg "Warning: Failed to resize filesystem (exit code: $RESIZE2FS_EXIT)"
+											msg "resize2fs output: $RESIZE2FS_OUTPUT"
+											echo "=== searche2fs: ERROR - Filesystem resize FAILED (exit $RESIZE2FS_EXIT): $RESIZE2FS_OUTPUT ===" > /dev/kmsg 2>&1 || true
+										fi
+										
+										# Remount the rootfs
+										msg "Remounting rootfs after resize..."
+										echo "=== searche2fs: Remounting $boot_device to $ROOTFS_DIR ===" > /dev/kmsg 2>&1 || true
+										if mount -t $boot_device_type $boot_device $ROOTFS_DIR 2>&1; then
+											msg "Rootfs remounted successfully after resize"
+											echo "=== searche2fs: Remount SUCCESS - Rootfs ready ===" > /dev/kmsg 2>&1 || true
+										else
+											msg "ERROR: Failed to remount rootfs after resize"
+											echo "=== searche2fs: ERROR - Remount FAILED ===" > /dev/kmsg 2>&1 || true
+											return 1
+										fi
+									else
+										msg "Warning: resize tools not available (resize-part, parted, or resize2fs missing), skipping partition resize"
+									fi
+								fi
+								
 								return 0
 							fi
 						else
