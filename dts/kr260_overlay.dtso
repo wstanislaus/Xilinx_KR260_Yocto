@@ -179,7 +179,12 @@
             no-map;
             reg = <0x0 0x3ed00000 0x0 0x2000000>;
     };
-    /* Nullify the conflicting node */
+    /* Nullify the conflicting 256KB node from zynqmp.dtsi (rproc_0_fw_image) */
+    memory@3ed00000 {
+            reg = <0x0 0x0 0x0 0x0>;
+            status = "disabled";
+    };
+    /* Nullify rproc_1_fw_image from zynqmp.dtsi (RPU core 2, not used) */
     memory@3ef00000 {
             reg = <0x0 0x0 0x0 0x0>;
             status = "disabled";
