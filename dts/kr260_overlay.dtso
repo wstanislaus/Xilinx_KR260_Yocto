@@ -175,9 +175,14 @@
      * cores. The no-map property ensures this memory is not accessible from the
      * Linux kernel's normal memory management, preventing conflicts.
      */
-    rproc_0_reserved: rproc@3ed000000 {
+    rproc_0_reserved: memory@3ed000000 {
             no-map;
             reg = <0x0 0x3ed00000 0x0 0x2000000>;
+    };
+    /* Nullify the conflicting node */
+    memory@3ef00000 {
+            reg = <0x0 0x0 0x0 0x0>;
+            status = "disabled";
     };
 };
 
