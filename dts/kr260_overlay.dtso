@@ -36,16 +36,16 @@
 
 	/*
 	 * RPU (Real-Time Processing Unit) Configuration
-	 * 
+	 *
 	 * This node configures the R5F subsystem for remoteproc support, allowing
 	 * the APU (Application Processing Unit) to load firmware and start the RPU
 	 * cores dynamically. The remoteproc framework in Linux uses this configuration
 	 * to manage the RPU lifecycle (load firmware, start, stop, reset).
-	 * 
+	 *
 	 * Configuration:
 	 * - cluster-mode = 1: Split mode (R5F cores operate independently)
 	 * - tcm-mode = 1: Split TCM mode (each core has its own TCM)
-	 * 
+	 *
 	 * The memory-region property references rproc_0_reserved, which provides
 	 * a 32MB reserved memory region (0x3ed00000-0x3ed00000+32MB) for firmware
 	 * loading and RPU execution.
@@ -91,27 +91,27 @@
 
     /*
      * PL (Programmable Logic) and RPU Communication Infrastructure
-     * 
+     *
      * This amba bus node provides the communication and memory mapping infrastructure
      * for interaction between APU, RPU, and PL (FPGA fabric):
-     * 
+     *
      * 1. Shared Memory Regions:
      *    - shm0 (0x3ed80000, 16MB): APU-RPU shared memory for data exchange
      *    - shm1 (0x80010000, 512KB): Shared memory with PL BRAM for PL-RPU communication
-     * 
+     *
      * 2. Inter-Processor Interrupt (IPI) Channels:
      *    - ipi_ch0 (0xff300000): IPI channel 0 for APU-RPU signaling
      *    - ipi_ch7 (0xff340000): IPI channel 7 with interrupt support (GIC SPI 29)
-     * 
+     *
      * 3. Message Passing:
      *    - msg0 (0xff990000): APU to RPU0 message passing interface
-     * 
+     *
      * 4. PL Overlay Support:
      *    - ploverlay0 (0x80000000): PL overlay control register for dynamic
      *      reconfiguration and PL-RPU interaction
      *    - intc0 (0x80001000): AXI Interrupt Controller for PL-generated interrupts
      *      to APU/RPU
-     * 
+     *
      * All these devices are exposed as generic-uio devices, allowing user-space
      * applications to directly access hardware registers and shared memory regions
      * for low-latency communication between processing units.
@@ -144,16 +144,26 @@
             compatible = "generic-uio";
             reg = <0x0 0xff990000 0x0 0x1000>;
         };
-        /* PL overlay control register for dynamic reconfiguration */
-        ploverlay0: ploverlay@80000000 {
+
+        /* AXI GPIO for LED Control (Accessed by RPU) */
+        /* Reduced to 4KB to allow space for other peripherals */
+        axi_gpio_0: gpio@80000000 {
             compatible = "generic-uio";
             reg = <0x0 0x80000000 0x0 0x1000>;
         };
+
         /* AXI Interrupt Controller for PL-generated interrupts */
         intc0: intc@80001000 {
             compatible = "generic-uio";
             reg = <0x0 0x80001000 0x0 0x1000>;
         };
+
+        /* PL overlay control register for dynamic reconfiguration */
+        ploverlay0: ploverlay@80002000 {
+            compatible = "generic-uio";
+            reg = <0x0 0x80002000 0x0 0x1000>;
+        };
+
         /* Shared memory with PL BRAM for PL-RPU communication */
         shm1: shm@80010000 {
             compatible = "generic-uio";
@@ -168,7 +178,7 @@
     #size-cells = <2>;
     /*
      * Reserved memory region for RPU firmware loading and execution
-     * 
+     *
      * This 32MB region (0x3ed00000 - 0x3ef00000) is reserved for the remoteproc
      * framework to load RPU firmware images. The remoteproc driver uses this
      * memory to store firmware binaries and provide execution space for the RPU
