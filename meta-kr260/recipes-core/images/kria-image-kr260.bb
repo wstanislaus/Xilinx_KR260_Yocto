@@ -98,6 +98,7 @@ IMAGE_INSTALL += " \
     e2fsprogs-mke2fs \
     e2fsprogs-tune2fs \
     e2fsprogs-resize2fs \
+    devmem2 \
 "
 
 # XRT (Xilinx Runtime) for FPGA acceleration
@@ -320,7 +321,7 @@ disable_root_login() {
 install_kernel_image() {
     # Create /boot directory
     install -d ${IMAGE_ROOTFS}/boot
-    
+
     # Check if image.ub exists in deploy directory
     if [ -f ${DEPLOY_DIR_IMAGE}/image.ub ]; then
         bbnote "Copying image.ub to /boot in rootfs"

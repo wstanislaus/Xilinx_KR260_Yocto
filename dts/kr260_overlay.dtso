@@ -123,9 +123,16 @@
         #size-cells = <0x2>;
         ranges = <0x0 0x0 0x0 0x0 0x1 0x0>;
         /* Shared memory for APU-RPU communication */
-        shm0: shm@3ed80000 {
+        /* Moved to 0x40000000 (19MB offset from 0x3ED00000) to allow large RPU firmware (up to 19MB) */
+        shm00: shm@40000000 {
             compatible = "generic-uio";
-            reg = <0x0 0x3ed80000 0x0 0x1000000>;
+            reg = <0x0 0x40000000 0x0 0x100000>; /* Reduced to 1MB, fits within 32MB reserved region */
+        };
+
+        /* Additional 12MB shared memory from 20MB offset to end of 32MB region */
+        shm01: shm@40100000 {
+            compatible = "generic-uio";
+            reg = <0x0 0x40100000 0x0 0xC00000>;
         };
         /* Inter-Processor Interrupt channel 0 */
         ipi_ch0: ipi@ff300000 {
@@ -185,18 +192,15 @@
      * cores. The no-map property ensures this memory is not accessible from the
      * Linux kernel's normal memory management, preventing conflicts.
      */
-    rproc_0_reserved: memory@3ed000000 {
+    rproc_0_reserved: memory@3ed00000 {
             no-map;
             reg = <0x0 0x3ed00000 0x0 0x2000000>;
     };
-    /* Nullify the conflicting 256KB node from zynqmp.dtsi (rproc_0_fw_image) */
-    memory@3ed00000 {
-            reg = <0x0 0x0 0x0 0x0>;
-            status = "disabled";
-    };
-    /* Nullify rproc_1_fw_image from zynqmp.dtsi (RPU core 2, not used) */
+
+    /* Disable rproc_1_fw_image from zynqmp.dtsi (RPU core 2, not used) */
+    /* Access by node name/address as base DTB symbols might not be available */
     memory@3ef00000 {
-            reg = <0x0 0x0 0x0 0x0>;
+            reg = <0x0 0x3ef00000 0x0 0x40000>;
             status = "disabled";
     };
 };
