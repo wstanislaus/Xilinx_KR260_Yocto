@@ -379,3 +379,10 @@ TOOLCHAIN_TARGET_TASK += " \
 TOOLCHAIN_TARGET_TASK += " \
     libmetal-dev \
 "
+
+# Include kernel source in SDK for kernel module development
+# The kernel source will be available at $SDKTARGETSYSROOT/usr/src/kernel in the SDK
+# This allows cross-compilation of kernel modules using the SDK toolchain
+TOOLCHAIN_TARGET_TASK += " \
+    kernel-devsrc \
+"
