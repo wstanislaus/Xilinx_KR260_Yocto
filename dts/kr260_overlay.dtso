@@ -100,11 +100,14 @@
      *    - shm1 (0x80010000, 512KB): Shared memory with PL BRAM for PL-RPU communication
      *
      * 2. Inter-Processor Interrupt (IPI) Channels:
-     *    - ipi_ch0 (0xff300000): IPI channel 0 for APU-RPU signaling
-     *    - ipi_ch7 (0xff340000): IPI channel 7 with interrupt support (GIC SPI 29)
+     *    - ipi_ch0 (0xff300000): IPI channel 0 (APU side) for triggering interrupts
+     *    - ipi_ch1 (0xff310000): IPI channel 1 (RPU0 side) with interrupt support (GIC SPI 33, ID 65)
+     *      This is the primary channel for APU-to-RPU0 communication
+     *    - ipi_ch7 (0xff340000): IPI channel 7 (PL1 side) with interrupt support (GIC SPI 29, ID 61)
+     *      Channel for PL-to-RPU communication
      *
      * 3. Message Passing:
-     *    - msg0 (0xff990000): APU to RPU0 message passing interface
+     *    - msg0 (0xff990000): APU to RPU0 message passing interface for command/acknowledgment handshake
      *
      * 4. PL Overlay Support:
      *    - ploverlay0 (0x80000000): PL overlay control register for dynamic
@@ -134,19 +137,33 @@
             compatible = "generic-uio";
             reg = <0x0 0x40100000 0x0 0xC00000>;
         };
-        /* Inter-Processor Interrupt channel 0 */
+        /* Inter-Processor Interrupt channel 0 (APU side) */
         ipi_ch0: ipi@ff300000 {
             compatible = "generic-uio";
             reg = <0x0 0xff300000 0x0 0x1000>;
         };
-        /* Inter-Processor Interrupt channel 7 with interrupt support */
+        /* Inter-Processor Interrupt channel 1 (RPU0 side) - APU to RPU0 communication
+         * Standard ZynqMP mapping: GIC_SPI 33 (interrupt ID 65)
+         * This is the primary IPI channel for APU-RPU0 communication
+         */
+        ipi_ch1: ipi@ff310000 {
+            compatible = "generic-uio";
+            reg = <0x0 0xff310000 0x0 0x1000>;
+            interrupt-parent = <&gic>;
+            interrupts = <GIC_SPI 33 IRQ_TYPE_LEVEL_HIGH>;
+        };
+        /* Inter-Processor Interrupt channel 7 (PL1 side) - For PL communication
+         * This channel can be used for PL-to-RPU communication
+         */
         ipi_ch7: ipi@ff340000 {
             compatible = "generic-uio";
             reg = <0x0 0xff340000 0x0 0x1000>;
             interrupt-parent = <&gic>;
             interrupts = <GIC_SPI 29 IRQ_TYPE_LEVEL_HIGH>;
         };
-        /* APU to RPU0 message passing interface */
+        /* APU to RPU0 message passing interface
+         * Shared memory region for command/acknowledgment handshake
+         */
         msg0: msg@ff990000 {
             compatible = "generic-uio";
             reg = <0x0 0xff990000 0x0 0x1000>;

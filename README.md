@@ -12,7 +12,7 @@ This repo contains the Yocto build infrastructure for the **Xilinx_KR260** platf
 - **Network Boot** – Pre-configured for TFTP kernel boot and NFS rootfs (board IP configurable via `BOARD_IP` variable, default `172.20.1.2/24`).
 - **Default Account** – User `xilinx` (UID/GID 1000) with password `xilinx`, sudo rights, hostname `Xilinx-KR260`.
 - **PYNQ + Jupyter** – Installs PYNQ v3.1.2 and a password-protected Jupyter Notebook server on port `9090`. Enables rapid experimentation and validation of PL bitstreams through interactive Python development before production deployment.
-- **SDK Toolchain** – `make build-sdk` delivers a self-contained cross-toolchain with all required headers and libraries.
+- **SDK Toolchain** – `make build-sdk` delivers a self-contained cross-toolchain with all required headers, libraries, and kernel source for building kernel modules.
 - **Remoteproc Support** – Enables loading RPU (Real-Time Processing Unit) firmware from APU (Application Processing Unit) and starting the RPU cores via the Linux remoteproc framework. The device tree overlay (`kr260_overlay.dtso`) configures the R5F cluster for split/lockstep modes and provides memory regions for firmware loading.
 
 ## Prerequisites
@@ -279,6 +279,45 @@ MACHINE=k26-smk-kr-sdt bitbake virtual/kernel
 MACHINE=k26-smk-kr-sdt bitbake kria-image-kr260
 MACHINE=k26-smk-kr-sdt bitbake kria-image-kr260 -c populate_sdk
 ```
+
+## SDK Toolchain Usage
+
+### Installing the SDK
+
+After building the SDK with `make build-sdk`, install it:
+
+```bash
+# Install the SDK (adjust path as needed)
+# for exmaple
+./build/tmp-glibc/deploy/sdk/kria-toolchain-kr260-sdk.sh -y -d /opt/kr260-toolchain/
+# Follow the prompts to install (default: /opt/kr260-toolchain)
+```
+
+### Using the SDK for Kernel Module Development
+
+The SDK includes the kernel source tree needed for building out-of-tree kernel modules:
+
+```bash
+# Source the SDK environment
+source /opt/kr260-toolchain/environment-setup-cortexa72-cortexa53-oe-linux
+
+# 1. Navigate to the kernel source directory in the SDK
+cd /tools/kr260_yocto_toolchain/sysroots/cortexa72-cortexa53-oe-linux/usr/lib/modules/6.12.40-xilinx/build
+
+# 2. Prepare the kernel source for module building
+make ARCH=arm64 modules_prepare
+
+# Kernel source is located at:
+# $SDKTARGETSYSROOT/usr/src/kernel/
+
+# Build kernel modules by pointing KDIR to the kernel source:
+cd /path/to/your/kernel/module
+make KDIR=$SDKTARGETSYSROOT/usr/src/kernel
+```
+
+**Note**: The kernel source path in the SDK is typically:
+- `$SDKTARGETSYSROOT/usr/src/kernel` (after sourcing the environment)
+- Or: `<sdk-install-dir>/sysroots/cortexa72-cortexa53-oe-linux/usr/src/kernel`
 
 ## Configuration
 
