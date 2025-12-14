@@ -230,6 +230,27 @@
 	local-mac-address = [00 0a 35 00 00 00];
 };
 
+/* Enable hardware watchdog
+ * 
+ * Watchdog Configuration:
+ * - Timeout: 5 seconds
+ * - Kernel pets at interval = timeout / 5 (patched driver)
+ *   For 5 second timeout: petting interval = 5/5 = 1 second
+ * - Userspace should also pet at timeout/5 interval when in control
+ * - Kernel automatically pets watchdog when no userspace has control
+ * - Userspace can take control by opening /dev/watchdog0
+ * - Userspace can release control by closing /dev/watchdog0 (returns to kernel)
+ * 
+ * Usage:
+ * - Kernel automatically starts petting at boot (at timeout/5 interval)
+ * - To take control from userspace: open("/dev/watchdog0", O_WRONLY)
+ * - To release control to kernel: close(fd)
+ */
+&watchdog0 {
+	status = "okay";
+	timeout-sec = <5>;  /* 5 second timeout, kernel pets every 1 second (5/5) */
+};
+
 &amba {
 	zyxclmm_drm {
 		compatible = "xlnx,zocl";

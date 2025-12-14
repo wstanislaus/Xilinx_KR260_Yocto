@@ -1,8 +1,14 @@
 # KR260 kernel customizations
 
+# Tell Yocto where to find patch files
+FILESEXTRAPATHS:prepend:k26-smk-kr-sdt := "${THISDIR}/files:"
+
 # Disable openamp-xilinx kmeta to avoid missing repository fetches
 KMETA:k26-smk-kr-sdt = ""
 SRC_URI:remove:k26-smk-kr-sdt = " file://openamp-xilinx-kmeta;type=kmeta;name=openamp-xilinx-kmeta;destsuffix=openamp-xilinx-kmeta"
+
+# Apply watchdog petting interval patch
+SRC_URI:append:k26-smk-kr-sdt = " file://0001-cadence-wdt-fix-petting-interval-to-1-second.patch"
 
 # Configure initramfs image
 # Use plnx-initramfs-image which includes NFS mounting scripts
