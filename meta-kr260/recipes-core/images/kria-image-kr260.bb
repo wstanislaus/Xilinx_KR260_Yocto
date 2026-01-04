@@ -81,13 +81,12 @@ IMAGE_INSTALL += " \
 "
 
 # Wireless/WiFi support packages
-# RTL8812BU driver (rtl88x2bu) is built as external module
+# RTL8812BU driver is built as external module
 IMAGE_INSTALL += " \
     wpa-supplicant \
     iw \
     rfkill \
     linux-firmware \
-    rtl88x2bu \
 "
 
 # System utilities
