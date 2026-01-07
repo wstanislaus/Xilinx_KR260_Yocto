@@ -81,13 +81,11 @@ IMAGE_INSTALL += " \
 "
 
 # Wireless/WiFi support packages
-# RTL8812BU driver is built as external module
-# kernel-modules includes all built kernel modules (cfg80211, mac80211, rfkill, rtl8xxxu, etc.)
 IMAGE_INSTALL += " \
     wpa-supplicant \
     iw \
     rfkill \
-    linux-firmware \
+    linux-firmware-ralink \
     kernel-modules \
 "
 
@@ -348,63 +346,6 @@ disable_root_login() {
     fi
 }
 
-# Copy kernel modules from kernel build to rootfs
-# This ensures wireless modules (cfg80211, mac80211, rfkill, rtl8xxxu) are included
-install_kernel_modules() {
-    # Find the kernel package image directory (where modules are installed)
-    KERNEL_IMAGE_DIR=$(find "${TMPDIR}/work" -path "*/linux-xlnx/*/image/usr/lib/modules" -type d 2>/dev/null | head -1)
-    
-    if [ -z "${KERNEL_IMAGE_DIR}" ]; then
-        bbwarn "Kernel modules directory not found, skipping kernel module installation"
-        return
-    fi
-    
-    # Get kernel version from the modules directory path
-    KERNEL_VERSION=$(basename $(find "${KERNEL_IMAGE_DIR}" -maxdepth 1 -type d ! -path "${KERNEL_IMAGE_DIR}" | head -1) 2>/dev/null)
-    
-    if [ -z "${KERNEL_VERSION}" ]; then
-        bbwarn "Could not determine kernel version, skipping kernel module installation"
-        return
-    fi
-    
-    # Source modules directory from kernel build
-    KERNEL_MODULES_SRC="${KERNEL_IMAGE_DIR}/${KERNEL_VERSION}/kernel"
-    
-    # Destination in rootfs
-    KERNEL_MODULES_DST="${IMAGE_ROOTFS}/lib/modules/${KERNEL_VERSION}/kernel"
-    
-    if [ -d "${KERNEL_MODULES_SRC}" ]; then
-        bbnote "Installing kernel modules from ${KERNEL_MODULES_SRC} to ${KERNEL_MODULES_DST}"
-        
-        # Copy all kernel modules, preserving directory structure
-        find ${KERNEL_MODULES_SRC} -name "*.ko" -type f | while read mod; do
-            rel_path=${mod#${KERNEL_MODULES_SRC}/}
-            dst_path=${KERNEL_MODULES_DST}/${rel_path}
-            install -d $(dirname ${dst_path})
-            cp ${mod} ${dst_path}
-            bbnote "Copied module: ${rel_path}"
-        done
-        
-        # Copy module dependency files if they exist
-        MODULES_DEP="${KERNEL_IMAGE_DIR}/${KERNEL_VERSION}/modules.dep"
-        if [ -f "${MODULES_DEP}" ]; then
-            install -d ${IMAGE_ROOTFS}/lib/modules/${KERNEL_VERSION}
-            cp ${MODULES_DEP} ${IMAGE_ROOTFS}/lib/modules/${KERNEL_VERSION}/ 2>/dev/null || true
-        fi
-        
-        # Copy other module metadata files
-        for depfile in modules.dep.bin modules.alias modules.symbols; do
-            if [ -f "${KERNEL_IMAGE_DIR}/${KERNEL_VERSION}/${depfile}" ]; then
-                cp ${KERNEL_IMAGE_DIR}/${KERNEL_VERSION}/${depfile} ${IMAGE_ROOTFS}/lib/modules/${KERNEL_VERSION}/ 2>/dev/null || true
-            fi
-        done
-        
-        bbnote "Kernel modules installed successfully (kernel version: ${KERNEL_VERSION})"
-    else
-        bbwarn "Kernel modules source directory not found: ${KERNEL_MODULES_SRC}"
-    fi
-}
-
 # Copy image.ub kernel FIT image to /boot directory in rootfs
 install_kernel_image() {
     # Create /boot directory
@@ -422,7 +363,7 @@ install_kernel_image() {
 }
 
 # Run post-processing hooks
-ROOTFS_POSTPROCESS_COMMAND += "set_hostname; enable_zocl_module; create_xilinx_user; create_notebook_directory; remove_sysv_init_scripts; setup_global_env; rename_ethernet_interface; setup_jupyter_service; disable_root_login; install_kernel_modules; install_kernel_image; "
+ROOTFS_POSTPROCESS_COMMAND += "set_hostname; enable_zocl_module; create_xilinx_user; create_notebook_directory; remove_sysv_init_scripts; setup_global_env; rename_ethernet_interface; setup_jupyter_service; disable_root_login; install_kernel_image; "
 
 # Increase image size to accommodate PYNQ runtime, XRT, and additional packages
 IMAGE_ROOTFS_SIZE ?= "1048576"
