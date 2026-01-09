@@ -22,6 +22,7 @@ BBLAYERS ?= " \
   @SOURCES_DIR@/sources/meta-xilinx/meta-xilinx-bsp \
   @SOURCES_DIR@/sources/meta-xilinx/meta-xilinx-imgrcvry \
   @SOURCES_DIR@/sources/meta-xilinx/meta-xilinx-multimedia \
+  @SOURCES_DIR@/sources/meta-xilinx/meta-xilinx-mali400 \
   @SOURCES_DIR@/sources/meta-xilinx/meta-microblaze \
   @SOURCES_DIR@/sources/meta-openamp \
   @SOURCES_DIR@/sources/meta-kria \

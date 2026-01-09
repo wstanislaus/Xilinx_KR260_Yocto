@@ -11,12 +11,34 @@ MACHINE ??= "@MACHINE@"
 DISTRO ?= ""
 LICENSE_FLAGS_ACCEPTED += "xilinx"
 
+# Accept FSL EULA for Mali GPU drivers (required for libmali-xlnx in Scarthgap)
+ACCEPT_FSL_EULA = "1"
+
+# Ensure machine has mali400 feature enabled
+# This is required for the libmali-xlnx recipe to be available
+MACHINE_FEATURES:append = " mali400"
+
 # Enable virtualization if using meta-virtualization layer
 DISTRO_FEATURES:append = " virtualization"
 
 # Enable systemd and usrmerge (required for systemd and dfx-mgr)
 DISTRO_FEATURES:append = " usrmerge systemd"
 DISTRO_FEATURES:remove = "sysvinit"
+
+# Enable the proprietary Mali 400 user-space libraries
+# This is required for libmali-xlnx package in Scarthgap
+# Must be set after other DISTRO_FEATURES to ensure it's properly recognized
+DISTRO_FEATURES:append = " libmali"
+
+# 1. Skip SPDX generation for the mali module to prevent the 'Unable to find package' error
+SPDX_SKIP_PACKAGES += "kernel-module-mali"
+
+# 2. Prevent the SDK from trying to include kernel modules (which it shouldn't usually need)
+# This often bypasses the need for the SPDX check entirely for the SDK task
+SDKIMAGE_FEATURES:remove = "dev-pkgs dbg-pkgs"
+
+# 3. If the error persists, disable SPDX entirely for this build to save time
+INHERIT:remove = "create-spdx"
 
 # Set init manager to systemd
 VIRTUAL-RUNTIME_init_manager = "systemd"

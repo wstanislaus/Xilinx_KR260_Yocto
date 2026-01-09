@@ -325,8 +325,7 @@ build-sdk: setup-env
 	@cd $(SOURCES_DIR) && \
 		bash -c "source edf-init-build-env $(BUILD_DIR) > /dev/null 2>&1 && MACHINE=$(MACHINE) BB_NUMBER_THREADS=$(BB_NUMBER_THREADS) bitbake kria-image-kr260 -c populate_sdk"
 	@echo "SDK toolchain build complete!"
-	@mv $(BUILD_DIR)/tmp-glibc/deploy/sdk/*toolchain*.sh $(BUILD_DIR)/tmp-glibc/deploy/sdk/kria-toolchain-kr260-sdk.sh
-	@echo "Output: $(BUILD_DIR)/tmp-glibc/deploy/sdk/kria-toolchain-kr260-sdk.sh"
+	@echo "Output Folder: $(BUILD_DIR)/tmp-glibc/deploy/sdk/"
 
 bitbake-shell: setup-env
 	@echo "Opening bitbake shell..."

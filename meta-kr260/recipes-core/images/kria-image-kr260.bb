@@ -80,6 +80,15 @@ IMAGE_INSTALL += " \
     iptables \
 "
 
+# Wireless/WiFi support packages
+IMAGE_INSTALL += " \
+    wpa-supplicant \
+    iw \
+    rfkill \
+    linux-firmware-ralink \
+    kernel-modules \
+"
+
 # System utilities
 IMAGE_INSTALL += " \
     htop \
@@ -125,6 +134,26 @@ IMAGE_INSTALL += " \
     grpc \
     protobuf \
     python3-protobuf \
+"
+
+# Multimedia, graphics, and video packages
+IMAGE_INSTALL += " \
+    v4l-utils \
+    opencv \
+    gstreamer1.0-plugins-base \
+    gstreamer1.0-plugins-good \
+    python3-opencv \
+    libdrm \
+    libdrm-tests \
+"
+
+# Required for Mali GPU support and OpenCL
+IMAGE_INSTALL += " \
+    libmali-xlnx \
+    opencl-icd-loader \
+    opencl-clhpp-dev \
+    opencl-headers \
+    clinfo \
 "
 
 # Set hostname to Xilinx-KR260
@@ -340,6 +369,10 @@ ROOTFS_POSTPROCESS_COMMAND += "set_hostname; enable_zocl_module; create_xilinx_u
 IMAGE_ROOTFS_SIZE ?= "1048576"
 IMAGE_ROOTFS_EXTRA_SPACE = "524288"
 
+# Skip SPDX generation for the Mali kernel module to fix rootfs errors
+# The kernel-module-mali package has issues with SPDX generation
+SPDX_SKIP_PACKAGES += "kernel-module-mali"
+
 # SDK configuration - include development packages in SDK
 # Note: pkgconfig and pkgconfig-dev are provided by target-sdk-provides-dummy
 TOOLCHAIN_TARGET_TASK += " \
@@ -373,6 +406,7 @@ TOOLCHAIN_TARGET_TASK += " \
     autoconf \
     automake \
     libtool \
+    opencv-dev \
 "
 
 # Include libmetal development packages in SDK
