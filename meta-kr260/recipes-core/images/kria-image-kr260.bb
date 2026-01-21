@@ -156,6 +156,12 @@ IMAGE_INSTALL += " \
     clinfo \
 "
 
+# Joystick/gamepad support packages
+IMAGE_INSTALL += " \
+    joystick \
+    evtest \
+"
+
 # Set hostname to Xilinx-KR260
 set_hostname() {
     echo "Xilinx-KR260" > ${IMAGE_ROOTFS}${sysconfdir}/hostname
