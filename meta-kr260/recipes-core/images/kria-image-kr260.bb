@@ -89,6 +89,15 @@ IMAGE_INSTALL += " \
     kernel-modules \
 "
 
+# Wireless/WiFi support packages
+IMAGE_INSTALL += " \
+    wpa-supplicant \
+    iw \
+    rfkill \
+    linux-firmware-ralink \
+    kernel-modules \
+"
+
 # System utilities
 IMAGE_INSTALL += " \
     htop \
@@ -154,6 +163,12 @@ IMAGE_INSTALL += " \
     opencl-clhpp-dev \
     opencl-headers \
     clinfo \
+"
+
+# Joystick/gamepad support packages
+IMAGE_INSTALL += " \
+    joystick \
+    evtest \
 "
 
 # Set hostname to Xilinx-KR260
@@ -373,6 +388,10 @@ IMAGE_ROOTFS_EXTRA_SPACE = "524288"
 # The kernel-module-mali package has issues with SPDX generation
 SPDX_SKIP_PACKAGES += "kernel-module-mali"
 
+# Skip SPDX generation for the Mali kernel module to fix rootfs errors
+# The kernel-module-mali package has issues with SPDX generation
+SPDX_SKIP_PACKAGES += "kernel-module-mali"
+
 # SDK configuration - include development packages in SDK
 # Note: pkgconfig and pkgconfig-dev are provided by target-sdk-provides-dummy
 TOOLCHAIN_TARGET_TASK += " \
@@ -406,6 +425,7 @@ TOOLCHAIN_TARGET_TASK += " \
     autoconf \
     automake \
     libtool \
+    opencv-dev \
     opencv-dev \
 "
 
