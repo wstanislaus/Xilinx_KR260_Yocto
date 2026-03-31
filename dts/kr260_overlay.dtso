@@ -203,7 +203,7 @@
     /*
      * Reserved memory region for RPU firmware loading and execution
      *
-     * This 32MB region (0x3ed00000 - 0x3ef00000) is reserved for the remoteproc
+     * This 32MB region (0x3ed00000 - 0x40d00000) is reserved for the remoteproc
      * framework to load RPU firmware images. The remoteproc driver uses this
      * memory to store firmware binaries and provide execution space for the RPU
      * cores. The no-map property ensures this memory is not accessible from the
