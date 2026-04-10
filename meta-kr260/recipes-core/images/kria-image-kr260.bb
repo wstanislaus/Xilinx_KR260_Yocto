@@ -78,6 +78,16 @@ IMAGE_INSTALL += " \
     iputils-tracepath \
     tcpdump \
     iptables \
+    lsof \
+"
+
+# Wireless/WiFi support packages
+IMAGE_INSTALL += " \
+    wpa-supplicant \
+    iw \
+    rfkill \
+    linux-firmware-ralink \
+    kernel-modules \
 "
 
 # Wireless/WiFi support packages

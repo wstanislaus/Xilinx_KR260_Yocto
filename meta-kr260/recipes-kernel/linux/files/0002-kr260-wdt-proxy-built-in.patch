@@ -1,0 +1,249 @@
+From: William Stanislaus <wstanislaus@gmail.com>
+Subject: [PATCH] watchdog: add KR260 built-in early HW watchdog proxy
+
+Register kr260_wdt_proxy at late_initcall so the Cadence (or other) watchdog
+class device has probed, while still starting before PID 1 / initramfs.
+Optional short msleep retry covers deferred probe ordering.
+
+Signed-off-by: William Stanislaus <wstanislaus@gmail.com>
+---
+ drivers/watchdog/Kconfig |  11 ++
+ drivers/watchdog/Makefile         |   1 +
+ drivers/watchdog/kr260_wdt_proxy.c | 195 ++++++++++++++++++++++++++++++++++
+3 files changed, 207 insertions(+)
+
+diff --git a/drivers/watchdog/Kconfig b/drivers/watchdog/Kconfig
+--- a/drivers/watchdog/Kconfig
++++ b/drivers/watchdog/Kconfig
+@@ -488,8 +488,19 @@ config CADENCE_WATCHDOG
+ 	depends on HAS_IOMEM
+ 	select WATCHDOG_CORE
+ 	help
+ 	  Say Y here if you want to include support for the watchdog
+ 	  timer in the Xilinx Zynq.
+
++config KR260_WDT_PROXY
++	bool "KR260 early kernel watchdog proxy (Kria KR260)"
++	depends on WATCHDOG_CORE
++	help
++	  Feed a watchdog device from a kernel thread starting at late_initcall
++	  (after the watchdog driver has registered, before userspace). Exposes
++	  /sys/class/misc/kr260_wdt_proxy/handoff so userspace can take over
++	  /dev/watchdogN without racing the kernel ping thread.
++
++	  Say Y unless you use a different watchdog keepalive scheme.
++
+ config 21285_WATCHDOG
+ 	tristate "DC21285 watchdog"
+ 	depends on FOOTBRIDGE
+diff --git a/drivers/watchdog/Makefile b/drivers/watchdog/Makefile
+--- a/drivers/watchdog/Makefile
++++ b/drivers/watchdog/Makefile
+@@ -43,6 +43,7 @@ obj-$(CONFIG_ASM9260_WATCHDOG) += asm9260_wdt.o
+ obj-$(CONFIG_AT91RM9200_WATCHDOG) += at91rm9200_wdt.o
+ obj-$(CONFIG_AT91SAM9X_WATCHDOG) += at91sam9_wdt.o
+ obj-$(CONFIG_CADENCE_WATCHDOG) += cadence_wdt.o
++obj-$(CONFIG_KR260_WDT_PROXY) += kr260_wdt_proxy.o
+ obj-$(CONFIG_OMAP_WATCHDOG) += omap_wdt.o
+ obj-$(CONFIG_TWL4030_WATCHDOG) += twl4030_wdt.o
+ obj-$(CONFIG_21285_WATCHDOG) += wdt285.o
+diff --git a/drivers/watchdog/kr260_wdt_proxy.c b/drivers/watchdog/kr260_wdt_proxy.c
+new file mode 100644
+--- /dev/null
++++ b/drivers/watchdog/kr260_wdt_proxy.c
+@@ -0,0 +1,195 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Feed PS watchdog from kernel space until userspace takes over via sysfs.
++ *
++ * Built-in: late_initcall runs after watchdog devices have probed, still
++ * before PID 1, so initramfs hangs (kernel alive) and kernel panics (ping
++ * thread stops) can expire the hardware watchdog.
++ *
++ * /dev/watchdogN is single-open; this never opens it. Uses
++ * watchdog_dev_kernel_{start,ping}() from watchdog_dev.c.
++ *
++ * Handoff:
++ *   echo userspace > /sys/class/misc/kr260_wdt_proxy/handoff
++ *     Stop kernel pings; open /dev/watchdog0 (or chosen device) before expiry.
++ *   echo kernel > /sys/class/misc/kr260_wdt_proxy/handoff
++ *     Close /dev/watchdog0 first (do not write magic 'V' if you want WDT to
++ *     stay armed), then resume kernel pings.
++ */
++
++#include <linux/delay.h>
++#include <linux/device.h>
++#include <linux/init.h>
++#include <linux/kernel.h>
++#include <linux/kthread.h>
++#include <linux/miscdevice.h>
++#include <linux/module.h>
++#include <linux/mutex.h>
++#include <linux/watchdog.h>
++
++/* Defined in watchdog_dev.c (same linkage unit as built-in watchdog core). */
++extern int watchdog_dev_kernel_start(struct watchdog_device *wdd);
++extern int watchdog_dev_kernel_ping(struct watchdog_device *wdd);
++extern struct device *watchdog_dev_find_class_device_by_name(const char *name);
++
++static char *watchdog_devname = "watchdog0";
++module_param(watchdog_devname, charp, 0444);
++MODULE_PARM_DESC(watchdog_devname,
++		 "Name under /sys/class/watchdog (default watchdog0 = FPD WDT on ZynqMP)");
++
++static unsigned int ping_interval_ms = 2000;
++module_param(ping_interval_ms, uint, 0444);
++MODULE_PARM_DESC(ping_interval_ms, "Kernel keepalive interval in ms (default 2000)");
++
++static unsigned int probe_retry_count = 100;
++module_param(probe_retry_count, uint, 0444);
++MODULE_PARM_DESC(probe_retry_count,
++		 "20 ms sleep iterations waiting for watchdog class device (default 100)");
++
++enum kr260_wdt_mode {
++	KR260_WDT_KERNEL = 0,
++	KR260_WDT_USERSPACE = 1,
++};
++
++static struct watchdog_device *kr260_wdd;
++static struct device *kr260_wdt_class_dev;
++static struct task_struct *kr260_ping_thread;
++static DEFINE_MUTEX(kr260_handoff_mutex);
++static enum kr260_wdt_mode kr260_mode = KR260_WDT_KERNEL;
++
++static int kr260_ping_threadfn(void *data)
++{
++	while (!kthread_should_stop()) {
++		if (READ_ONCE(kr260_mode) == KR260_WDT_KERNEL && kr260_wdd)
++			watchdog_dev_kernel_ping(kr260_wdd);
++		msleep_interruptible(ping_interval_ms);
++	}
++	return 0;
++}
++
++static ssize_t handoff_show(struct device *dev, struct device_attribute *attr,
++			    char *buf)
++{
++	const char *s =
++		(READ_ONCE(kr260_mode) == KR260_WDT_KERNEL) ? "kernel" : "userspace";
++
++	return sysfs_emit(buf, "%s\n", s);
++}
++
++static ssize_t handoff_store(struct device *dev, struct device_attribute *attr,
++			     const char *buf, size_t count)
++{
++	if (sysfs_streq(buf, "userspace")) {
++		mutex_lock(&kr260_handoff_mutex);
++		WRITE_ONCE(kr260_mode, KR260_WDT_USERSPACE);
++		mutex_unlock(&kr260_handoff_mutex);
++		return count;
++	}
++
++	if (sysfs_streq(buf, "kernel")) {
++		int err;
++
++		mutex_lock(&kr260_handoff_mutex);
++		WRITE_ONCE(kr260_mode, KR260_WDT_KERNEL);
++		err = kr260_wdd ? watchdog_dev_kernel_start(kr260_wdd) : -ENODEV;
++		mutex_unlock(&kr260_handoff_mutex);
++		if (err)
++			return err;
++		return count;
++	}
++
++	return -EINVAL;
++}
++
++static DEVICE_ATTR_RW(handoff);
++
++static struct attribute *kr260_sysfs_attrs[] = {
++	&dev_attr_handoff.attr,
++	NULL,
++};
++
++static const struct attribute_group kr260_sysfs_group = {
++	.attrs = kr260_sysfs_attrs,
++};
++
++static struct miscdevice kr260_misc = {
++	.minor = MISC_DYNAMIC_MINOR,
++	.name = "kr260_wdt_proxy",
++};
++
++static int __init kr260_wdt_proxy_init(void)
++{
++	unsigned int attempt;
++	int err;
++
++	for (attempt = 0; attempt < probe_retry_count; attempt++) {
++		kr260_wdt_class_dev =
++			watchdog_dev_find_class_device_by_name(watchdog_devname);
++		if (kr260_wdt_class_dev)
++			break;
++		msleep(20);
++	}
++
++	if (!kr260_wdt_class_dev) {
++		pr_err("kr260_wdt_proxy: no /sys/class/watchdog/%s after %u retries\n",
++		       watchdog_devname, probe_retry_count);
++		return -ENODEV;
++	}
++
++	kr260_wdd = dev_get_drvdata(kr260_wdt_class_dev);
++	if (!kr260_wdd) {
++		put_device(kr260_wdt_class_dev);
++		kr260_wdt_class_dev = NULL;
++		return -EINVAL;
++	}
++
++	if (kr260_wdd->ops->owner && !try_module_get(kr260_wdd->ops->owner)) {
++		put_device(kr260_wdt_class_dev);
++		kr260_wdt_class_dev = NULL;
++		return -ENODEV;
++	}
++
++	err = misc_register(&kr260_misc);
++	if (err)
++		goto err_misc;
++
++	err = sysfs_create_group(&kr260_misc.this_device->kobj, &kr260_sysfs_group);
++	if (err)
++		goto err_sysfs;
++
++	err = watchdog_dev_kernel_start(kr260_wdd);
++	if (err) {
++		pr_err("kr260_wdt_proxy: watchdog_dev_kernel_start failed: %d\n", err);
++		goto err_start;
++	}
++
++	kr260_ping_thread = kthread_run(kr260_ping_threadfn, NULL, "kr260_wdt_ping");
++	if (IS_ERR(kr260_ping_thread)) {
++		err = PTR_ERR(kr260_ping_thread);
++		kr260_ping_thread = NULL;
++		goto err_thread;
++	}
++
++	pr_info("kr260_wdt_proxy: feeding %s every %u ms; handoff via misc kr260_wdt_proxy\n",
++		watchdog_devname, ping_interval_ms);
++	return 0;
++
++err_thread:
++err_start:
++	sysfs_remove_group(&kr260_misc.this_device->kobj, &kr260_sysfs_group);
++err_sysfs:
++	misc_deregister(&kr260_misc);
++err_misc:
++	if (kr260_wdd->ops->owner)
++		module_put(kr260_wdd->ops->owner);
++	put_device(kr260_wdt_class_dev);
++	kr260_wdt_class_dev = NULL;
++	kr260_wdd = NULL;
++	return err;
++}
++
++late_initcall(kr260_wdt_proxy_init);
++
++MODULE_LICENSE("GPL");
++MODULE_DESCRIPTION("KR260 kernel watchdog proxy (HW petting + userspace handoff)");
++MODULE_AUTHOR("William Stanislaus <wstanislaus@gmail.com>");

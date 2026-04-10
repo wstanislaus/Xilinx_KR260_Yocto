@@ -4,6 +4,11 @@
 KMETA:k26-smk-kr-sdt = ""
 SRC_URI:remove:k26-smk-kr-sdt = " file://openamp-xilinx-kmeta;type=kmeta;name=openamp-xilinx-kmeta;destsuffix=openamp-xilinx-kmeta"
 
+FILESEXTRAPATHS:prepend := "${THISDIR}/files:"
+
+# Export watchdog_dev_kernel_start / watchdog_dev_kernel_ping for kr260-wdt-proxy
+SRC_URI:append:k26-smk-kr-sdt = " file://0001-watchdog-export-kernel-handlers.patch file://0002-kr260-wdt-proxy-built-in.patch"
+
 # Configure initramfs image
 # Use plnx-initramfs-image which includes NFS mounting scripts
 INITRAMFS_IMAGE:k26-smk-kr-sdt = "plnx-initramfs-image"

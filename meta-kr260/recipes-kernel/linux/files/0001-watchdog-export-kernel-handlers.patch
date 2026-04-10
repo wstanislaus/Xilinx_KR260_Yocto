@@ -1,0 +1,84 @@
+From 74057332ec14181a85c2260a5a5f117156b0f13c Mon Sep 17 00:00:00 2001
+From: William Stanislaus <wstanislaus@gmail.com>
+Date: Thu, 9 Apr 2026 21:53:24 -0700
+Subject: [PATCH] watchdog: export helpers for external watchdog proxy modules
+
+Export mutex-wrapped start/ping and a class-device lookup for loadable
+modules that must feed /dev/watchdogN without opening it (single-open).
+class_find("watchdog") is no longer available to modules on recent kernels.
+
+Signed-off-by: William Stanislaus <wstanislaus@gmail.com>
+---
+ drivers/watchdog/watchdog_dev.c | 57 +++++++++++++++++++++++++++++++++
+ 1 file changed, 57 insertions(+)
+
+diff --git a/drivers/watchdog/watchdog_dev.c b/drivers/watchdog/watchdog_dev.c
+index 4190cb800cc4..1431fd145dfb 100644
+--- a/drivers/watchdog/watchdog_dev.c
++++ b/drivers/watchdog/watchdog_dev.c
+@@ -1316,6 +1316,63 @@ int watchdog_dev_resume(struct watchdog_device *wdd)
+ 	return ret;
+ }
+
++/**
++ * watchdog_dev_kernel_start - start or refresh watchdog from another module
++ * @wdd: registered watchdog device (drvdata of class watchdog sysfs device)
++ *
++ * Takes the watchdog core mutex and calls watchdog_start(). Use when
++ * /dev/watchdogN is not held open by userspace.
++ */
++int watchdog_dev_kernel_start(struct watchdog_device *wdd)
++{
++	struct watchdog_core_data *wd_data = wdd->wd_data;
++	int err;
++
++	if (!wd_data)
++		return -EINVAL;
++
++	mutex_lock(&wd_data->lock);
++	err = watchdog_start(wdd);
++	mutex_unlock(&wd_data->lock);
++
++	return err;
++}
++
++/**
++ * watchdog_dev_kernel_ping - keepalive from another module
++ * @wdd: registered watchdog device
++ */
++int watchdog_dev_kernel_ping(struct watchdog_device *wdd)
++{
++	struct watchdog_core_data *wd_data = wdd->wd_data;
++	int err;
++
++	if (!wd_data)
++		return -EINVAL;
++
++	mutex_lock(&wd_data->lock);
++	err = watchdog_ping(wdd);
++	mutex_unlock(&wd_data->lock);
++
++	return err;
++}
++
++/**
++ * watchdog_dev_find_class_device_by_name - find watchdog sysfs device (e.g. "watchdog0")
++ *
++ * Same name as under /sys/class/watchdog/. Returns the class device with a
++ * refcount taken; caller must put_device(). Needed because class_find() is not
++ * exported and &watchdog_class is file-local.
++ */
++struct device *watchdog_dev_find_class_device_by_name(const char *name)
++{
++	if (!name)
++		return NULL;
++
++	return class_find_device_by_name(&watchdog_class, name);
++}
++
++
+ module_param(handle_boot_enabled, bool, 0444);
+ MODULE_PARM_DESC(handle_boot_enabled,
+ 	"Watchdog core auto-updates boot enabled watchdogs before userspace takes over (default="
+--
+2.43.0

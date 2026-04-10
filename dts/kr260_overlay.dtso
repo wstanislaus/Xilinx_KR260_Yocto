@@ -46,9 +46,9 @@
 	 * - cluster-mode = 1: Split mode (R5F cores operate independently)
 	 * - tcm-mode = 1: Split TCM mode (each core has its own TCM)
 	 *
-	 * The memory-region property references rproc_0_reserved, which provides
-	 * a 32MB reserved memory region (0x3ed00000-0x3ed00000+32MB) for firmware
-	 * loading and RPU execution.
+	 * The memory-region property references rproc_0_reserved (4MB at
+	 * 0x3ed00000) for remoteproc firmware load/execute. The full 32MB DDR
+	 * carve-out is: 4MB firmware, 14MB shm00, 14MB shm01 (see reserved-memory).
 	 */
 	rf5ss@ff9a0000 {
 		compatible = "xlnx,zynqmp-r5fss";
@@ -96,7 +96,8 @@
      * for interaction between APU, RPU, and PL (FPGA fabric):
      *
      * 1. Shared Memory Regions:
-     *    - shm0 (0x3ed80000, 16MB): APU-RPU shared memory for data exchange
+     *    - shm00 (0x3f100000, 14MB): APU-RPU shared DDR (first slice of 32MB carve-out)
+     *    - shm01 (0x3ff00000, 14MB): APU-RPU shared DDR (second slice)
      *    - shm1 (0x80010000, 512KB): Shared memory with PL BRAM for PL-RPU communication
      *
      * 2. Inter-Processor Interrupt (IPI) Channels:
@@ -125,17 +126,15 @@
         #address-cells = <0x2>;
         #size-cells = <0x2>;
         ranges = <0x0 0x0 0x0 0x0 0x1 0x0>;
-        /* Shared memory for APU-RPU communication */
-        /* Moved to 0x40000000 (19MB offset from 0x3ED00000) to allow large RPU firmware (up to 19MB) */
-        shm00: shm@40000000 {
+        /* APU-RPU shared DDR: 14MB after 4MB firmware region in 0x3ed00000..0x40d00000 */
+        shm00: shm@3f100000 {
             compatible = "generic-uio";
-            reg = <0x0 0x40000000 0x0 0x100000>; /* Reduced to 1MB, fits within 32MB reserved region */
+            reg = <0x0 0x3f100000 0x0 0xe00000>;
         };
 
-        /* Additional 12MB shared memory from 20MB offset to end of 32MB region */
-        shm01: shm@40100000 {
+        shm01: shm@3ff00000 {
             compatible = "generic-uio";
-            reg = <0x0 0x40100000 0x0 0xC00000>;
+            reg = <0x0 0x3ff00000 0x0 0xe00000>;
         };
         /* Inter-Processor Interrupt channel 0 (APU side) */
         ipi_ch0: ipi@ff300000 {
@@ -180,6 +179,8 @@
         intc0: intc@80001000 {
             compatible = "generic-uio";
             reg = <0x0 0x80001000 0x0 0x1000>;
+            interrupt-parent = <&gic>;
+            interrupts = <GIC_SPI 89 IRQ_TYPE_LEVEL_HIGH>;
         };
 
         /* PL overlay control register for dynamic reconfiguration */
@@ -201,17 +202,21 @@
     #address-cells = <2>;
     #size-cells = <2>;
     /*
-     * Reserved memory region for RPU firmware loading and execution
-     *
-     * This 32MB region (0x3ed00000 - 0x40d00000) is reserved for the remoteproc
-     * framework to load RPU firmware images. The remoteproc driver uses this
-     * memory to store firmware binaries and provide execution space for the RPU
-     * cores. The no-map property ensures this memory is not accessible from the
-     * Linux kernel's normal memory management, preventing conflicts.
+     * 32MB DDR carve-out (0x3ed00000 .. 0x40d00000):
+     * - 4MB no-map: remoteproc firmware (rproc_0_reserved)
+     * - 14MB + 14MB: APU-RPU shm00/shm01 (reserved, no no-map so UIO mmap works)
      */
     rproc_0_reserved: memory@3ed00000 {
             no-map;
-            reg = <0x0 0x3ed00000 0x0 0x2000000>;
+            reg = <0x0 0x3ed00000 0x0 0x400000>;
+    };
+
+    apu_rpu_shm00_reserved: memory@3f100000 {
+            reg = <0x0 0x3f100000 0x0 0xe00000>;
+    };
+
+    apu_rpu_shm01_reserved: memory@3ff00000 {
+            reg = <0x0 0x3ff00000 0x0 0xe00000>;
     };
 
     /* Disable rproc_1_fw_image from zynqmp.dtsi (RPU core 2, not used) */
@@ -237,10 +242,16 @@
 	};
 };
 
+&watchdog0 {
+       timeout-sec = <30>;
+};
+
 &{/chosen/} {
     /*
-    bootargs = "earlycon console=ttyPS1,115200 clk_ignore_unused root=/dev/nfs rw nfsroot=" XSTRINGIFY(NFS_SERVER) ":" XSTRINGIFY(NFS_ROOT) ",tcp,vers=3,timeo=14 xilinx_tsn_ep.st_pcp=4 cma=900M ip=" XSTRINGIFY(BOARD_IP) "::" XSTRINGIFY(BOARD_GATEWAY) ":" XSTRINGIFY(BOARD_NETMASK) ":Xilinx-KR260:eth0:off uio_pdrv_genirq.of_id=generic-uio";
+    bootargs = "earlycon console=ttyPS1,115200 clk_ignore_unused root=/dev/nfs rw nfsroot=" XSTRINGIFY(NFS_SERVER) ":" XSTRINGIFY(NFS_ROOT) ",tcp,vers=3,timeo=14 xilinx_tsn_ep.st_pcp=4 cma=900M ip=" XSTRINGIFY(BOARD_IP) "::" XSTRINGIFY(BOARD_GATEWAY) ":" XSTRINGIFY(BOARD_NETMASK) ":Xilinx-KR260:eth0:off uio_pdrv_genirq.of_id=generic-uio usbhid.quirks=0x2dc8:0x310a:0x0004";
     */
+
     bootargs = "earlycon console=ttyPS1,115200 clk_ignore_unused root=/dev/mmcblk0p2 rw rootwait xilinx_tsn_ep.st_pcp=4 cma=900M uio_pdrv_genirq.of_id=generic-uio usbhid.quirks=0x2dc8:0x310a:0x0004";
+
     stdout-path = "serial1:115200n8";
 };
