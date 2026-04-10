@@ -99,6 +99,15 @@ IMAGE_INSTALL += " \
     kernel-modules \
 "
 
+# Wireless/WiFi support packages
+IMAGE_INSTALL += " \
+    wpa-supplicant \
+    iw \
+    rfkill \
+    linux-firmware-ralink \
+    kernel-modules \
+"
+
 # System utilities
 IMAGE_INSTALL += " \
     htop \
