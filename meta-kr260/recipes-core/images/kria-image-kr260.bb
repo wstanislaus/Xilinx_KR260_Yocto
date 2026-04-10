@@ -78,6 +78,7 @@ IMAGE_INSTALL += " \
     iputils-tracepath \
     tcpdump \
     iptables \
+    lsof \
 "
 
 # Wireless/WiFi support packages
